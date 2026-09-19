@@ -110833,7 +110833,7 @@ if (typeof window !== "undefined" && typeof window.requestIdleCallback === "func
 window.imagesid = "";
 window.xiancheng = true;
 async function checkForUpdates2() {
-  window.chatu8LocalVersion = "3.1.0-cloud.7";
+  window.chatu8LocalVersion = "3.1.0-cloud.8";
   const forkVersionLabel = document.getElementById("ch-version-display");
   if (forkVersionLabel) forkVersionLabel.textContent = `v${window.chatu8LocalVersion}`;
   return;

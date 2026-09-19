@@ -7,7 +7,7 @@ import zipfile
 root = Path(__file__).resolve().parents[1]
 dist = root / 'dist'
 dist.mkdir(exist_ok=True)
-target = dist / 'st-chatu8-cloud-3.1.0-cloud7.zip'
+target = dist / 'st-chatu8-cloud-3.1.0-cloud8.zip'
 excluded = {'.git', '.agents', '.codex', 'backups', 'dist', 'node_modules', 'test-results', '__pycache__'}
 entries = []
 with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as archive:
@@ -29,7 +29,7 @@ digest = hashlib.sha256(target.read_bytes()).hexdigest()
 (dist / (target.name + '.sha256')).write_text(f'{digest}  {target.name}\n')
 print(json.dumps({'archive': str(target), 'files': len(entries) + 1, 'bytes': target.stat().st_size, 'sha256': digest}, ensure_ascii=False, indent=2))
 
-source = dist / 'st-chatu8-cloud-3.1.0-cloud7-source.zip'
+source = dist / 'st-chatu8-cloud-3.1.0-cloud8-source.zip'
 with zipfile.ZipFile(source, 'w', zipfile.ZIP_DEFLATED) as archive:
     for file in sorted(root.rglob('*')):
         rel = file.relative_to(root)

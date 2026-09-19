@@ -116,9 +116,9 @@ test('per-user server sessions do not share credentials or jobs; anonymous reque
 });
 
 test('parameter mapping respects model choices and sends negatives only when enabled', () => {
-  assert.deepEqual(mapParameters(config, { width: '768', height: '1024' }, 'bad'), { size: '768*1024' });
+  assert.deepEqual(mapParameters({ ...config, dimensionSource: 'request' }, { width: '768', height: '1024' }, 'bad'), { size: '768*1024' });
   assert.deepEqual(mapParameters({ ...config, sizeMode: 'none', negativeField: 'negative_prompt' }, { width: 768, height: 1024 }, 'bad'), { size: '1024*1024', negative_prompt: 'bad' });
-  assert.deepEqual(mapParameters({ ...config, imageParams: {}, sizeMode: 'width_height' }, { width: 768, height: 1024 }), { width: 768, height: 1024 });
+  assert.deepEqual(mapParameters({ ...config, dimensionSource: 'request', imageParams: {}, sizeMode: 'width_height' }, { width: 768, height: 1024 }), { width: 768, height: 1024 });
 });
 
 test('wait timeout and temporary query errors never resubmit paid generation', async () => {

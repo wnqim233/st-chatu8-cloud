@@ -1,0 +1,64 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LoRA 保存与界面测试</title><link rel="stylesheet" href="/wavespeed/style.css">
+<style>body{margin:12px;background:#111a2e;color:#eee;font:15px/1.6 system-ui}#st-chatu8-settings{max-width:950px;margin:auto}.st-chatu8-settings-section{padding:16px;margin-bottom:16px;background:#1d2a43;border-radius:10px}button{padding:10px;background:#df8a10;color:white;border:0;border-radius:8px}h3{color:#ffab24}pre{white-space:pre-wrap;overflow-wrap:anywhere}</style>
+<div id="st-chatu8-settings"></div>
+<script type="module">
+import { createWaveSpeedAdapter } from '/wavespeed/adapter.js';
+import { createBrowserApi } from '/wavespeed/browser.js';
+const stateKey = 'settings-fixture-platform';
+const load = () => JSON.parse(localStorage.getItem(stateKey) || '{"paid":[],"active":[],"done":[],"max":0,"cache":[],"responses":[],"auto":false}');
+const save = state => localStorage.setItem(stateKey, JSON.stringify(state));
+const settings = JSON.parse(localStorage.getItem('settings-fixture-settings') || '{"mode":"civitai","cache":"1","cloudStorageId":"settings-browser-fixture"}');
+const saveSettings = () => localStorage.setItem('settings-fixture-settings', JSON.stringify(settings));
+const nativeFetch = globalThis.fetch.bind(globalThis);
+const json = body => new Response(JSON.stringify(body));
+const fetcher = async (url, opts = {}) => {
+  if (url.includes('orchestration.civitai.com')) {
+    const state = load();
+    if (url.includes('whatif')) return json({cost:{total:1}});
+    if (opts.method === 'POST') { const body=JSON.parse(opts.body); const id='civitai-paid-'+(state.paid.length+1); state.paid.push({id,body});save(state);return json({id,status:'scheduled'}); }
+    return json({id:url.split('/').pop(),status:'succeeded',steps:[{output:{images:[{available:true,url:'https://images.example/fixture.png'}]}}]});
+  }
+  if (url.startsWith('https://api.wavespeed.ai/')) {
+    const state = load();
+    if (opts.method === 'POST') {
+      const id = `browser-paid-${state.paid.length + 1}`;
+      state.paid.push({ id, prompt: JSON.parse(opts.body).prompt }); state.active.push(id); state.max = Math.max(state.max, state.active.length); save(state);
+      return json({ code: 200, data: { id, status: 'created' } });
+    }
+    const id = url.match(/predictions\/([^/]+)/)[1];
+    const done = state.auto || state.done.includes(id);
+    if (done) { state.active = state.active.filter(value => value !== id); save(state); }
+    return json({ code: 200, data: { id, status: done ? 'completed' : 'processing', outputs: ['https://images.example/fixture.png'] } });
+  }
+  if (url.startsWith('https://images.example/')) return new Response(Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aSUcAAAAASUVORK5CYII='), c => c.charCodeAt(0)));
+  throw Error(`Unexpected external request: ${url}`);
+};
+const handlers = new Map();
+const events = { on: (name, fn) => { if (!handlers.has(name)) handlers.set(name, new Set()); handlers.get(name).add(fn); }, removeListener: (name, fn) => handlers.get(name)?.delete(fn), emit: (name, value) => { for (const fn of handlers.get(name) || []) fn(value); } };
+const tasks = new Map(); let sequence = 0;
+const realApi = createBrowserApi({ settings: () => settings, saveSettings }, { fetcher });
+let failSave = false;
+const api=(route,body)=>{if(failSave && route==='/config' && body)throw Error('模拟存储失败，未保存');return realApi(route,body);};
+if(!(await api('/config')).hasCivitaiKey) await api('/config', { civitaiKey:'fixture-fake-key',civitaiModel:'urn:air:krea2:diffusionmodel:civitai:1000@2000',civitaiParams:{width:1024,height:1024,steps:8,cfgScale:1,sampler:'euler',scheduler:'beta',loras:{'urn:air:krea2:lora:civitai:100@200':0.7}} });
+document.getElementById('st-chatu8-settings').innerHTML = await nativeFetch('/html/settings/wavespeed.html').then(r => r.text());
+const adapter = createWaveSpeedAdapter({
+  api, settings: () => settings, enabled: () => true, context: () => ({ chatId: 'original-chat' }), saveSettings,
+  events, eventTypes: { GENERATE_IMAGE_REQUEST: 'request', GENERATE_IMAGE_RESPONSE: 'response' }, initializeImages() {},
+  replacePrompt: async p => ({ modifiedPrompt: p, insertions: {} }), parseRoles: () => ({}), replaceCharacter: p => p, composePrompt: async (_a, p) => p,
+  cacheImage: async tag => { const state = load(); state.cache.push(tag); save(state); }, record() {}, log() {},
+  taskQueue: { addTask: () => { const id = String(++sequence); tasks.set(id, 'queued'); return id; }, updateStatus: (id, status) => tasks.set(id, status), completeTask: (id, ok) => tasks.set(id, ok ? 'completed' : 'failed') },
+});
+events.on('response', response => { const state = load(); state.responses.push({ id: response.id, success: response.success }); save(state); });
+adapter.mount(); adapter.updateMode();
+globalThis.fixture = {
+  ready: true,
+  config:()=>api('/config'),
+  failSave:value=>{failSave=value;},
+  generateOne:()=>adapter.generate({id:'settings-request-'+Date.now(),prompt:'A peaceful landscape',width:512,height:768}),
+  start: () => { for (let n = 1; n <= 5; n++) void adapter.generate({ id: `button-${n}`, prompt: `Landscape scene ${n}`, width: 512, height: 512 }); },
+  complete: id => { const state = load(); state.done.push(id); save(state); },
+  completeAll: () => { const state = load(); state.auto = true; save(state); },
+  snapshot: async () => ({ ...load(), jobs: (await api('/jobs')).map(({ id, status, prompt, params, configRevision }) => ({ id, status, prompt, params, configRevision })), tasks: [...tasks.values()], summary: document.getElementById('ws-queue-summary').textContent, overflow: document.documentElement.scrollWidth > innerWidth }),
+};
+</script></html>

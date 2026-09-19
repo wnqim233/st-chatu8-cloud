@@ -17,7 +17,7 @@ export function imagePath(path) {
 export function mapParameters(config, request, negative = '') {
   const params = structuredClone(config.imageParams);
   const width = Number(request.width), height = Number(request.height);
-  if (Number.isInteger(width) && width > 0 && Number.isInteger(height) && height > 0) {
+  if (config.dimensionSource !== 'json' && Number.isInteger(width) && width > 0 && Number.isInteger(height) && height > 0) {
     if (config.sizeMode === 'size') params.size = `${width}*${height}`;
     if (config.sizeMode === 'width_height') { params.width = width; params.height = height; }
   }

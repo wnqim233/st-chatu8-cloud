@@ -5,6 +5,8 @@
 import { makeId, imagePath, mapParameters, providerConfig, waitForJob, readLocalImage, LABELS } from './client.js';
 import { createBrowserApi } from './browser.js';
 import { ACTIVE, queuedJobs } from '../shared/jobs.js';
+import { createSettingsEditor, parameterSummary, loraSummary } from './settings.js';
+import { workflowBody } from '../shared/civitai.js';
 import { portableConfig } from '../shared/config.js';
 
 export function createWaveSpeedAdapter(deps) {
@@ -12,7 +14,7 @@ export function createWaveSpeedAdapter(deps) {
   const readImage = deps.readImage || readLocalImage;
   const wait = deps.wait || waitForJob;
   let listening = false;
-  let mounted = false;
+  let mounted;
   let models = [];
   let jobs = [];
   let workerTimer;
@@ -24,6 +26,8 @@ export function createWaveSpeedAdapter(deps) {
   const $ = name => globalThis.document?.getElementById(`ws-${name}`);
   const node = (tag, text, cls) => { const el = document.createElement(tag); if (text !== undefined) el.textContent = text; if (cls) el.className = cls; return el; };
   const notify = (text, error = false) => { if ($('status')) { $('status').textContent = text; $('status').dataset.error = String(error); } };
+
+  const editor = createSettingsEditor({ api, deps, $, notify, onModeChanged: updateMode });
 
   async function prepare(request, config) {
     const original = request.change?.trim() || request.prompt;
@@ -86,11 +90,11 @@ export function createWaveSpeedAdapter(deps) {
       taskId = deps.taskQueue.addTask({ name: `${label} 生图`, type: provider, prompt: request.prompt });
       taskState = { job: null, cancelled: false, status: 'queued' };
       cloudTasks.set(taskId, taskState);
-      const config = providerConfig(await api('/config'), provider);
+      const config = providerConfig(await editor.forGeneration(provider), provider);
       const { prompt, params } = await prepare(request, config);
       if (taskState.cancelled) throw new Error('已取消排队，未向平台提交。');
       let first = await api('/jobs', {
-        id: makeId(), provider, prompt, params, model: config.imageModel, cacheTag: request.prompt, change: request.change || '',
+        id: makeId(), provider, prompt, params, model: config.imageModel, configRevision: config.revision || 0, dimensionSource: config.dimensionSource, cacheTag: request.prompt, change: request.change || '',
         source: { chatId, messageId: String(request.id).slice(0, 100), swipeId: 0, hash: String(request.id).slice(0, 100) },
       });
       taskState.job = first;
@@ -121,6 +125,7 @@ export function createWaveSpeedAdapter(deps) {
   }
 
   function updateMode() {
+    editor.state();
     const enabled = deps.enabled() && ['wavespeed', 'civitai'].includes(deps.settings().mode);
     if (enabled && !listening) { deps.events.on(deps.eventTypes.GENERATE_IMAGE_REQUEST, generate); listening = true; }
     else if (!enabled && listening) { deps.events.removeListener(deps.eventTypes.GENERATE_IMAGE_REQUEST, generate); listening = false; }
@@ -162,39 +167,14 @@ export function createWaveSpeedAdapter(deps) {
     }, 3000);
   }
 
-  function fill(config) {
-    $('model').value = config.imageModel; $('params').value = JSON.stringify(config.imageParams, null, 2);
-    $('prefix').value = config.fixedPrompt; $('suffix').value = config.fixedPromptEnd; $('negative').value = config.negativePrompt;
-    $('size-mode').value = config.sizeMode; $('negative-field').value = config.negativeField;
-    $('key').value = ''; $('clear-key').checked = false;
-    $('key').placeholder = config.hasWavespeedKey ? '已保存；留空保留原 Key' : '尚未配置 WaveSpeed API Key';
-    $('civitai-key').value = ''; $('civitai-clear-key').checked = false;
-    $('civitai-key').placeholder = config.hasCivitaiKey ? '已保存；留空保留原 Key' : '尚未配置 Civitai API Key';
-    $('civitai-model').value = config.civitaiModel;
-    $('civitai-params').value = JSON.stringify(config.civitaiParams, null, 2);
-    $('civitai-buzz').value = config.civitaiMaxBuzz;
-    // The existing image size popup reads the same per-backend keys as other modes.
-    const size = String(config.imageParams.size || '').match(/^(\d+)\*(\d+)$/);
-    deps.settings().wavespeed_width = Number(size?.[1] || config.imageParams.width || 1024);
-    deps.settings().wavespeed_height = Number(size?.[2] || config.imageParams.height || 1024);
-    deps.settings().civitai_width = Number(config.civitaiParams.width || 1024);
-    deps.settings().civitai_height = Number(config.civitaiParams.height || 1024);
-  }
-
-  async function load() { const config = await api('/config'); fill(config); notify('浏览器直连模式已就绪，无需服务端插件。LLM 与世界书继续使用原插件设置。'); }
-  async function save() {
-    let params, civitaiParams;
-    try { params = JSON.parse($('params').value); civitaiParams = JSON.parse($('civitai-params').value); } catch { throw new Error('模型参数不是有效的 JSON。'); }
-    const config = await api('/config', { wavespeedKey: $('key').value.trim(), clear_wavespeedKey: $('clear-key').checked, imageModel: $('model').value.trim(), imageParams: params, civitaiKey: $('civitai-key').value.trim(), clear_civitaiKey: $('civitai-clear-key').checked, civitaiModel: $('civitai-model').value.trim(), civitaiParams, civitaiMaxBuzz: Number($('civitai-buzz').value), fixedPrompt: $('prefix').value, fixedPromptEnd: $('suffix').value, negativePrompt: $('negative').value, sizeMode: $('size-mode').value, negativeField: $('negative-field').value });
-    fill(config); deps.saveSettings(); notify('WaveSpeed / Civitai 配置已保存。');
-  }
   async function estimate() {
-    await save();
+    await editor.save('civitai', { use: false });
     const result = await api('/civitai/estimate', { prompt: $('civitai-preview').value });
     notify(`Civitai 预估 ${result.estimatedBuzz} Buzz，当前上限 ${result.maxBuzz} Buzz。${result.withinLimit ? '在上限内。' : '超过上限，将阻止生成。'}本次仅预估，没有提交付费任务。`);
   }
   function schema() { $('schema').textContent = JSON.stringify(models.find(m => m.id === $('model').value)?.schema || '请先读取模型列表，或查看所选模型文档。', null, 2); }
   async function loadModels() {
+    await editor.save('wavespeed', { use: false });
     models = await api('/models'); $('model-list').replaceChildren();
     for (const model of models) { const option = node('option'); option.value = model.id; option.label = model.name; $('model-list').append(option); }
     schema(); notify(`已读取 ${models.length} 个文生图模型，Key 验证通过。`);
@@ -210,7 +190,12 @@ export function createWaveSpeedAdapter(deps) {
     const container = $('jobs');
     const signature = JSON.stringify(jobs);
     if (container.dataset.signature === signature) return;
+    const openDetails = new Set([...container.querySelectorAll('details[open][data-detail-key]')].map(el => el.dataset.detailKey));
+    const recoveryValues = new Map([...container.querySelectorAll('input[data-job-id]')].map(el => [el.dataset.jobId, el.value]));
     container.dataset.signature = signature; container.replaceChildren();
+    const history = node('details'); history.dataset.detailKey = 'history';
+    const terminal = jobs.filter(j => ['completed', 'failed', 'cancelled'].includes(j.status));
+    history.append(node('summary', `已完成 / 失败 / 取消（${terminal.length}）`));
     if (!jobs.length) container.append(node('p', '暂无生图任务。', 'ws-hint'));
     for (const job of [...waiting, ...jobs.filter(j => j.status !== 'queued')]) {
       const card = node('article', undefined, 'ws-job');
@@ -218,7 +203,12 @@ export function createWaveSpeedAdapter(deps) {
       if (job.taskId) card.append(node('p', `任务 ID：${job.taskId}`, 'ws-hint'));
       if (job.estimatedBuzz !== undefined) card.append(node('p', `Civitai 提交时预估：${job.estimatedBuzz} Buzz`, 'ws-hint'));
       if (job.error) card.append(node('p', job.error, 'ws-status'));
-      const details = node('details'); details.append(node('summary', '查看实际绘图提示词'), node('pre', job.prompt, 'ws-code')); card.append(details);
+      card.append(node('p', `${parameterSummary(job.params)} · 配置 #${job.configRevision || 0}（入队时）`, 'ws-hint'));
+      const actual = node('details'); actual.dataset.detailKey = `params:${job.id}`;
+      const payload = job.provider === 'civitai' ? workflowBody(job).steps[0].input : { ...job.params, prompt: job.prompt };
+      actual.append(node('summary', job.status === 'queued' ? '查看入队参数与 LoRA（待提交）' : '查看实际请求参数与 LoRA'), node('pre', loraSummary(job.params), 'ws-code'), node('pre', JSON.stringify(payload, null, 2), 'ws-code'));
+      card.append(actual);
+      const details = node('details'); details.dataset.detailKey = `prompt:${job.id}`; details.append(node('summary', '查看实际绘图提示词'), node('pre', job.prompt, 'ws-code')); card.append(details);
       const images = node('div', undefined, 'ws-images');
       for (const src of job.images || []) if (imagePath(src)) {
         const a = node('a'); a.href = src; a.target = '_blank'; a.rel = 'noopener';
@@ -230,13 +220,22 @@ export function createWaveSpeedAdapter(deps) {
         cancel.addEventListener('click', () => api(`/jobs/${job.id}/cancel`, {}).then(remember).catch(e => notify(e.message, true)));
         card.append(cancel);
       }
+      if (['completed', 'failed', 'cancelled'].includes(job.status)) {
+        const regenerate = node('button', '按当前配置重新生成', 'menu_button'); regenerate.type = 'button';
+        regenerate.addEventListener('click', async () => {
+          if (!['civitai', 'wavespeed'].includes(deps.settings().mode)) { notify('请先保存并启用一个云端平台。', true); return; }
+          regenerate.disabled = true;
+          try { await generate({ id: makeId(), prompt: job.cacheTag || job.prompt, change: job.change, width: job.params.width, height: job.params.height }); }
+          finally { regenerate.disabled = false; }
+        }); card.append(regenerate);
+      }
       if (job.status === 'completed') {
         const button = node('button', '放回原插件缓存', 'menu_button'); button.type = 'button';
         button.addEventListener('click', () => restore(job, true).then(() => notify('图片已放回原插件缓存。刷新聊天页面后，原图片标签可加载该图片。')).catch(e => notify(e.message, true)));
         card.append(button);
       }
       if (job.status === 'unknown' || job.status === 'submitting' && Date.now() - (job.startedAt ?? job.createdAt) > 90000) {
-        const input = node('input'); input.placeholder = '对应平台历史记录中的任务 ID'; input.setAttribute('aria-label', '恢复任务 ID');
+        const input = node('input'); input.dataset.jobId = job.id; input.value = recoveryValues.get(job.id) || ''; input.placeholder = '对应平台历史记录中的任务 ID'; input.setAttribute('aria-label', '恢复任务 ID');
         const button = node('button', '补填 ID，恢复查询', 'menu_button'); button.type = 'button';
         button.addEventListener('click', () => api(`/jobs/${job.id}/recover`, { taskId: input.value.trim() }).then(remember).catch(e => notify(e.message, true)));
         card.append(input, button);
@@ -247,24 +246,19 @@ export function createWaveSpeedAdapter(deps) {
           }); card.append(dismiss);
         }
       }
-      container.append(card);
+      if (terminal.some(j => j.id === job.id)) history.append(card); else container.append(card);
     }
+    if (terminal.length) container.append(history);
+    for (const detail of container.querySelectorAll('details[data-detail-key]')) detail.open = openDetails.has(detail.dataset.detailKey);
   }
 
   function mount() {
-    if (mounted || !$('load')) return;
-    mounted = true;
-    const use = provider => {
-      const mode = document.getElementById('mode'); mode.value = provider;
-      window.jQuery(mode).trigger('change');
-      notify(`当前生图后端已切换到 ${provider === 'civitai' ? 'Civitai' : 'WaveSpeed'}。`);
-    };
-    for (const [id, action] of Object.entries({ load, save, models: loadModels, 'jobs-refresh': refreshJobs, 'civitai-estimate': estimate, 'civitai-use': async () => use('civitai'),
+    if (!$('form') || mounted === $('form')) return;
+    mounted = $('form'); editor.mount();
+    for (const [id, action] of Object.entries({ models: loadModels, 'jobs-refresh': refreshJobs, 'civitai-estimate': estimate,
       'open-worldbook': async () => window.jQuery('.st-chatu8-nav-link[data-tab="send_data"]').trigger('click'),
       'open-llm': async () => window.jQuery('.st-chatu8-nav-link[data-tab="llm"]').trigger('click'),
-      use: async () => {
-      use('wavespeed');
-    } })) {
+    })) {
       $(id).addEventListener('click', async () => {
         $(id).disabled = true;
         try { await action(); } catch (error) { notify(error.message, true); }
@@ -272,15 +266,13 @@ export function createWaveSpeedAdapter(deps) {
       });
     }
     $('model').addEventListener('change', schema);
-    // Load browser configuration when this page is opened.
-    document.querySelector('.st-chatu8-nav-link[data-tab="wavespeed"]')?.addEventListener('click', () => { if (!$('status').dataset.loaded) load().then(() => { $('status').dataset.loaded = 'true'; }).catch(e => notify(e.message, true)); });
   }
-  async function exportConfig() { return { version: 1, config: portableConfig(await api('/config')) }; }
+  async function exportConfig() { return editor.exportConfig(); }
   async function importConfig(backup) {
     if (backup === undefined) return;
     if (!backup || backup.version !== 1) throw new Error('不支持的云端生图配置版本。');
     const config = await api('/config', portableConfig(backup.config));
-    if ($('model')) fill(config);
+    editor.imported(config);
   }
   return { updateMode, mount, generate, restore, prepare, exportConfig, importConfig };
 }

@@ -107,3 +107,40 @@ test('cloud settings transfer restores model and LoRAs but preserves target cred
   await assert.rejects(target.importConfig({version:1,config:[]}),/JSON 对象/);
   assert.equal((await targetStore.config()).civitaiKey,'target-secret');
 });
+
+
+test('saved LoRA replacements and deletions reach the Civitai workflow exactly; revisions advance', async () => {
+  const { providerConfig, mapParameters } = await import('../wavespeed/client.js');
+  const store = memoryStore(); const paid = [], estimates = [];
+  const api = createBrowserApi({ settings: () => ({cloudStorageId:'lora-save-test'}) }, {storeFactory:()=>store,fetcher:async(url,options)=>{
+    const body=JSON.parse(options.body);
+    if(url.includes('whatif')) {estimates.push(body);return new Response(JSON.stringify({cost:{total:1}}));}
+    paid.push(body);return new Response(JSON.stringify({id:'lora-'+paid.length,status:'succeeded',steps:[]}));
+  }});
+  const a='urn:air:krea2:lora:civitai:100@200',b='urn:air:krea2:lora:civitai:101@201';
+  const params={width:1024,height:1024,steps:8,cfgScale:1,sampler:'euler',scheduler:'beta',loras:{[a]:0.7}};
+  let config=await api('/config',{civitaiKey:'fake-key',civitaiModel:'urn:air:krea2:diffusionmodel:civitai:1000@2000',civitaiParams:params});
+  for (const [i,loras] of [{[a]:0.3,[b]:0.9},{[b]:0.5},{}].entries()) {
+    const revision=config.revision;
+    config=await api('/config',{civitaiParams:{...params,loras}});
+    assert.equal(config.revision,revision+1);
+    const actual=mapParameters(providerConfig(await api('/config'),'civitai'),{width:512,height:768});
+    assert.equal(actual.width,1024,'JSON dimensions win by default');
+    await api('/jobs',{id:'lora-save-request-'+i,provider:'civitai',prompt:'same landscape prompt',params:actual,model:config.civitaiModel,configRevision:config.revision,source:{chatId:'c',messageId:'m',hash:'h'}});
+    assert.deepEqual(paid[i].steps[0].input.loras,loras);
+    assert.deepEqual(estimates[i].steps,paid[i].steps);
+    assert.deepEqual((await api('/config')).civitaiParams.loras,loras);
+  }
+  assert.equal(paid.length,3,'changing LoRAs does not reuse a previous request');
+  assert.equal(JSON.stringify(await api('/config')).includes('fake-key'),false);
+});
+
+test('invalid saves preserve old parameters and dimension source can explicitly follow the button', async () => {
+  const {providerConfig,mapParameters}=await import('../wavespeed/client.js');
+  const store=memoryStore(); const api=createBrowserApi({settings:()=>({cloudStorageId:'validation-save'})},{storeFactory:()=>store});
+  const before=await api('/config');
+  await assert.rejects(api('/config',{civitaiParams:{...before.civitaiParams,unsupportedLoraField:{}}}),/不支持/);
+  assert.deepEqual(await api('/config'),before);
+  const after=await api('/config',{dimensionSource:'request'});
+  assert.equal(mapParameters(providerConfig(after,'civitai'),{width:512,height:768}).height,768);
+});

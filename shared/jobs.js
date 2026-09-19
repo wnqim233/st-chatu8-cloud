@@ -80,6 +80,8 @@ export class WaveSpeedService {
       const mustQueue = jobs.some(j => j.status === 'queued') || jobs.filter(j => ACTIVE.has(j.status)).length >= MAX_ACTIVE_JOBS;
       const job = {
         id: input.id, provider: this.provider, source, prompt, model, params, autoKey,
+        configRevision: Number.isSafeInteger(input.configRevision) ? input.configRevision : config.revision || 0,
+        dimensionSource: input.dimensionSource === 'request' ? 'request' : 'json',
         status: 'queued', queueOrder: Math.max(0, ...jobs.map(j => j.queueOrder ?? j.createdAt)) + 1, taskId: '', images: [], outputs: [], error: '',
         createdAt: this.now(), updatedAt: this.now(), nextPollAt: 0,
         cacheTag: text(input.cacheTag ?? prompt, '原插件图片标签', 30000, true),

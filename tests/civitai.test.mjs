@@ -73,7 +73,7 @@ test('Civitai AIR, LoRA, negative prompt and dimensions follow v2 field names; s
   const lora = 'urn:air:sdxl:lora:civitai:123@456';
   const params = { ...DEFAULT_CONFIG.civitaiParams, additionalNetworks: { [lora]: { strength: 0.8 } } };
   validateCivitai(config.civitaiModel, params);
-  const mapped = mapParameters(providerConfig({ ...config, civitaiParams: params }, 'civitai'), { width: 832, height: 1216 }, 'blur');
+  const mapped = mapParameters(providerConfig({ ...config, dimensionSource: 'request', civitaiParams: params }, 'civitai'), { width: 832, height: 1216 }, 'blur');
   assert.equal(mapped.negativePrompt, 'blur'); assert.equal(mapped.negative_prompt, undefined); assert.equal(mapped.width, 832); assert.deepEqual(mapped.additionalNetworks, params.additionalNetworks);
   assert.equal(publicConfig(config).civitaiKey, undefined); assert.equal(publicConfig(config).hasCivitaiKey, true);
   assert.equal(updateConfig(config, { civitaiKey: '' }).civitaiKey, config.civitaiKey);

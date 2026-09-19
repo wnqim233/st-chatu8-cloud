@@ -5,7 +5,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   civitaiParams: { width: 1024, height: 1024, steps: 25, cfgScale: 5, scheduler: 'eulerA', quantity: 1 },
   civitaiMaxBuzz: 100,
   imageModel: 'wavespeed-ai/z-image/turbo', imageParams: { size: '1024*1024' },
-  fixedPrompt: '', fixedPromptEnd: '', negativePrompt: '', sizeMode: 'size', negativeField: '',
+  dimensionSource: 'json', fixedPrompt: '', fixedPromptEnd: '', negativePrompt: '', sizeMode: 'size', negativeField: '',
 });
 
 export class AppError extends Error {
@@ -46,9 +46,10 @@ export function validateImage(model, params) {
 export function updateConfig(old, input) {
   if (!plainObject(input)) throw new AppError('配置格式无效。');
   const next = { ...old };
-  for (const [key, max] of Object.entries({ imageModel: 200, civitaiModel: 250, fixedPrompt: 16000, fixedPromptEnd: 16000, negativePrompt: 16000, sizeMode: 30, negativeField: 100 })) {
+  for (const [key, max] of Object.entries({ imageModel: 200, civitaiModel: 250, fixedPrompt: 16000, fixedPromptEnd: 16000, negativePrompt: 16000, sizeMode: 30, dimensionSource: 20, negativeField: 100 })) {
     if (Object.hasOwn(input, key)) next[key] = text(input[key], key, max);
   }
+  if (!['json', 'request'].includes(next.dimensionSource ?? 'json')) throw new AppError('尺寸来源无效。');
   if (!['size', 'width_height', 'none'].includes(next.sizeMode)) throw new AppError('尺寸映射无效。');
   if (!['', 'negative_prompt'].includes(next.negativeField)) throw new AppError('负面提示词映射无效。');
   for (const key of ['wavespeedKey', 'civitaiKey']) {
@@ -61,6 +62,8 @@ export function updateConfig(old, input) {
   if (Object.hasOwn(input, 'civitaiMaxBuzz')) next.civitaiMaxBuzz = input.civitaiMaxBuzz;
   validateCivitai(next.civitaiModel, next.civitaiParams);
   if (!Number.isInteger(next.civitaiMaxBuzz) || next.civitaiMaxBuzz < 1 || next.civitaiMaxBuzz > 100000) throw new AppError('单次 Buzz 预估上限须为 1 到 100000 的整数。');
+  next.revision = (Number.isSafeInteger(old.revision) ? old.revision : 0) + 1;
+  next.savedAt = Date.now();
   return next;
 }
 
