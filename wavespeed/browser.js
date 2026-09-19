@@ -66,7 +66,14 @@ export class BrowserStore {
   async download(raw, stem, fetcher) {
     const url = new URL(raw);
     if (url.protocol !== 'https:' || url.username || url.password || (url.port && url.port !== '443') || /^(localhost|127\.|10\.|192\.168\.|169\.254\.|0\.|\[)/i.test(url.hostname) || /\.(local|localhost)$/i.test(url.hostname)) throw new AppError('平台返回的图片地址不是有效的公网 HTTPS 地址。');
-    const response = await fetcher(url.href, { credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error', signal: AbortSignal.timeout(60000) });
+    // Civitai blob endpoints redirect to a signed download on their own domain.
+    // Only these trusted provider endpoints may follow redirects; never send API credentials.
+    const civitaiBlob = ['orchestration.civitai.com', 'orchestration-new.civitai.com'].includes(url.hostname);
+    const response = await fetcher(url.href, { credentials: 'omit', referrerPolicy: 'no-referrer', redirect: civitaiBlob ? 'follow' : 'error', signal: AbortSignal.timeout(60000) });
+    if (civitaiBlob) {
+      const finalUrl = new URL(response.url || url.href);
+      if (finalUrl.protocol !== 'https:' || finalUrl.username || finalUrl.password || (finalUrl.port && finalUrl.port !== '443') || !finalUrl.hostname.endsWith('.civitai.com')) throw new AppError('Civitai 图片跳转到了非预期地址，未保存图片。');
+    }
     if (!response.ok) throw new AppError(`图片下载失败（HTTP ${response.status}），请查询原任务重试保存。`);
     const bytes = await limitedBody(response, 30 * 1024 * 1024);
     const format = detectImage(bytes);

@@ -63,3 +63,23 @@ test('original chat metadata helpers write only the independent plugin namespace
   assert.equal(await sandbox.getcharData('character'), 'cloud'); assert.equal(context.chatMetadata['st-chatu8'].data.character, 'original'); assert.equal(saves, 1);
   assert.ok(!source.includes('["st-chatu8"]'));
 });
+
+test('browser follows Civitai blob redirects without credentials and caches the actual image', async () => {
+  const store = new BrowserStore('redirect-test'); const saved=[];
+  store.write=async (key,blob)=>saved.push({key,blob});
+  const png=Uint8Array.from([137,80,78,71,13,10,26,10]);
+  const result=await store.download('https://orchestration-new.civitai.com/blobs/test','recovered-image',async (url,opts)=>{
+    assert.equal(opts.redirect,'follow'); assert.equal(opts.credentials,'omit'); assert.equal(opts.headers,undefined);
+    const response=new Response(png);Object.defineProperty(response,'url',{value:'https://orchestration-new.civitai.com/signed/image'});return response;
+  });
+  assert.equal(result,'recovered-image');assert.equal(saved[0].blob.type,'image/png');assert.equal(saved[0].blob.size,8);
+});
+
+test('browser keeps redirect blocking for other hosts and rejects foreign Civitai redirect results', async () => {
+  const store = new BrowserStore('redirect-test');store.write=async ()=>{};
+  const png=Uint8Array.from([137,80,78,71,13,10,26,10]);
+  await store.download('https://images.example/test','image',async (url,opts)=>{assert.equal(opts.redirect,'error');return new Response(png);});
+  await assert.rejects(store.download('https://orchestration-new.civitai.com/blobs/test','image',async ()=>{
+    const response=new Response(png);Object.defineProperty(response,'url',{value:'https://example.net/image'});return response;
+  }),/非预期地址/);
+});
