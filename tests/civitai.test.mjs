@@ -105,3 +105,34 @@ test('server routes preserve each job provider after a backend switch, and keep 
   assert.ok(calls.at(-1).includes('orchestration.civitai.com/v2/consumer/workflows/civitai-id'));
   await call('refresh', {}, ws.id); assert.ok(calls.at(-1).includes('api.wavespeed.ai'));
 });
+
+test('Krea 2 uses imageGen/comfy with a custom diffusion AIR for both estimate and submission', async t => {
+  const { db } = await setup(t);
+  const model = 'urn:air:krea2:checkpoint:civitai:2762538@3187539';
+  const custom = { ...config, civitaiModel: model, civitaiParams: { width: 1024, height: 1024, steps: 8, cfgScale: 1, sampler: 'euler', scheduler: 'beta', quantity: 1 } };
+  const bodies = [];
+  const service = new CivitaiService(db, { fetcher: async (url, opts) => {
+    bodies.push(JSON.parse(opts.body));
+    if (url.includes('whatif')) return json({ cost: { total: 8 } });
+    return json({ id: 'krea-workflow', status: 'scheduled', steps: [] });
+  } });
+  const result = await service.submit(input('krea-request-0001'), custom);
+  assert.equal(result.taskId, 'krea-workflow'); assert.equal(bodies.length, 2);
+  assert.equal(bodies[0].externalId, undefined); assert.ok(bodies[1].externalId);
+  assert.deepEqual(bodies[0].steps, bodies[1].steps);
+  const step = bodies[1].steps[0]; assert.equal(step.$type, 'imageGen');
+  assert.deepEqual(step.input, { width: 1024, height: 1024, steps: 8, cfgScale: 1, quantity: 1, sampler: 'euler', scheduler: 'beta', engine: 'comfy', ecosystem: 'krea2', model: 'turbo', operation: 'createImage', diffusionModel: model, seed: step.input.seed, prompt: 'rainy street' });
+  assert.ok(Number.isInteger(step.input.seed));
+});
+
+test('Krea 2 validates its own limits, diffusionmodel AIR, raw variant and LoRA format', () => {
+  const model = 'urn:air:krea2:diffusionmodel:civitai:2762538@3197873';
+  const lora = 'urn:air:krea2:lora:civitai:123@456';
+  const params = { variant: 'raw', sampler: 'er_sde', scheduler: 'simple', cfgScale: 0, loras: { [lora]: 0.6 } };
+  validateCivitai(model, params);
+  const step = workflowBody({ id: 'krea-raw-0001', model, params, seed: 42, prompt: 'a landscape' }).steps[0];
+  assert.equal(step.input.model, 'raw'); assert.equal(step.input.steps, 20); assert.equal(step.input.cfgScale, 0);
+  assert.equal(step.input.variant, undefined); assert.equal(step.input.diffusionModel, model); assert.deepEqual(step.input.loras, params.loras);
+  for (const p of [{scheduler:'eulerA'}, {width:2049}, {quantity:13}, {batchSize:2}, {additionalNetworks:{}}, {variant:'edit'}, {engine:'fal'}, {loras:{[lora]:'bad'}}]) assert.throws(() => validateCivitai(model,p));
+  assert.throws(() => validateCivitai(config.civitaiModel,{scheduler:'beta'}));
+});

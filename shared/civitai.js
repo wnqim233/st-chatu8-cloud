@@ -8,14 +8,23 @@ import { authHeaders, jsonRequest } from './http.js';
 const API = 'https://orchestration.civitai.com/v2/consumer/workflows';
 
 export function workflowBody(job, estimate = false) {
+  const krea2 = job.model.startsWith('urn:air:krea2:');
+  let input;
+  if (krea2) {
+    const { variant = 'turbo', ...params } = job.params;
+    input = { width: 1024, height: 1024, steps: variant === 'raw' ? 20 : 8,
+      cfgScale: variant === 'raw' ? 4 : 1, quantity: 1, sampler: 'euler', scheduler: 'beta',
+      ...params, engine: 'comfy', ecosystem: 'krea2', model: variant, operation: 'createImage',
+      diffusionModel: job.model, seed: job.params.seed ?? job.seed, prompt: job.prompt };
+  } else {
+    input = { width: 1024, height: 1024, steps: 25, cfgScale: 5, quantity: 1,
+      ...job.params, seed: job.params.seed ?? job.seed, model: job.model, prompt: job.prompt };
+  }
   return {
     tags: ['st-chatu8'], currencies: [],
-    // The current API also reserves externalId for what-if requests. Never
-    // reuse the estimate's idempotency key for a paid submission.
+    // Estimates and paid requests must have separate idempotency identities.
     ...(!estimate ? { externalId: `chatu8-${job.id}` } : {}),
-    steps: [{ $type: 'textToImage', name: 'image', timeout: '00:10:00', retries: 0,
-      input: { width: 1024, height: 1024, steps: 25, cfgScale: 5, quantity: 1,
-        ...job.params, seed: job.params.seed ?? job.seed, model: job.model, prompt: job.prompt } }],
+    steps: [{ $type: krea2 ? 'imageGen' : 'textToImage', name: 'image', timeout: '00:10:00', retries: 0, input }],
   };
 }
 
@@ -41,7 +50,7 @@ export const withCivitai = Base => class CivitaiService extends Base {
 
   async estimate(input, config) {
     const { model, params } = this.options(input, config);
-    const job = { model, params, seed: input.seed ?? params.seed ?? crypto.getRandomValues(new Uint32Array(1))[0], prompt: text(input.prompt, '预估提示词', 16000, true) };
+    const job = { model, params, seed: input.seed ?? params.seed ?? crypto.getRandomValues(new Uint32Array(1))[0], prompt: text(input.prompt, '预估提示词', model.startsWith('urn:air:krea2:') ? 10000 : 16000, true) };
     const response = await jsonRequest(this.fetcher, `${API}?whatif=true`, {
       method: 'POST', headers: authHeaders(config.civitaiKey), body: JSON.stringify(workflowBody(job, true)),
     }, 20000);

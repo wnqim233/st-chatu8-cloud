@@ -68,8 +68,9 @@ export function safeError(error, config = {}) {
 }
 
 export function validateCivitai(model, params) {
-  if (typeof model !== 'string' || !/^urn:air:[a-zA-Z0-9_-]+:(?:checkpoint|model):civitai:\d+@\d+$/.test(model)) throw new AppError('Civitai 模型需要完整 AIR，例如 urn:air:sdxl:checkpoint:civitai:101055@128078。');
+  if (typeof model !== 'string' || !/^urn:air:[a-zA-Z0-9_-]+:(?:checkpoint|model|diffusionmodel):civitai:\d+@\d+$/.test(model)) throw new AppError('Civitai 模型需要完整 AIR，例如 urn:air:sdxl:checkpoint:civitai:101055@128078。');
   if (!plainObject(params) || JSON.stringify(params).length > 20000) throw new AppError('Civitai 参数必须是小于 20 KB 的 JSON 对象。');
+  if (model.startsWith('urn:air:krea2:')) return validateKrea2(model, params);
   const allowed = new Set(['negativePrompt', 'width', 'height', 'steps', 'cfgScale', 'seed', 'scheduler', 'quantity', 'batchSize', 'clipSkip', 'outputFormat', 'additionalNetworks']);
   for (const key of Object.keys(params)) if (!allowed.has(key)) throw new AppError(`Civitai 文生图参数不支持 ${key}。prompt 和 model 由插件填写。`);
   for (const [key, min, max] of [['width', 64, 4084], ['height', 64, 4084], ['steps', 1, 150], ['seed', 0, 4294967295], ['quantity', 1, 16], ['batchSize', 1, 16], ['clipSkip', 1, 12]]) {
@@ -87,6 +88,29 @@ export function validateCivitai(model, params) {
       for (const key of Object.keys(network)) if (!['strength', 'triggerWord'].includes(key)) throw new AppError(`附加网络参数不支持 ${key}。`);
       if (network.strength !== undefined && !Number.isFinite(network.strength)) throw new AppError('LoRA strength 必须是数字。');
       if (network.triggerWord !== undefined) text(network.triggerWord, '触发词', 1000);
+    }
+  }
+  return { model, params: structuredClone(params) };
+}
+
+// Krea 2 uses the imageGen/comfy workflow, whose sampler and scheduler are separate.
+function validateKrea2(model, params) {
+  const allowed = new Set(['negativePrompt', 'width', 'height', 'steps', 'cfgScale', 'seed', 'sampler', 'scheduler', 'quantity', 'outputFormat', 'variant', 'loras']);
+  for (const key of Object.keys(params)) if (!allowed.has(key)) throw new AppError(`Krea 2 参数不支持 ${key}；使用 sampler、scheduler 和 loras。`);
+  for (const [key, min, max] of [['width', 64, 2048], ['height', 64, 2048], ['steps', 1, 150], ['seed', 0, 4294967295], ['quantity', 1, 12]]) {
+    if (params[key] !== undefined && (!Number.isInteger(params[key]) || params[key] < min || params[key] > max)) throw new AppError(`Krea 2 ${key} 必须为 ${min} 到 ${max} 的整数。`);
+  }
+  if (params.cfgScale !== undefined && (!Number.isFinite(params.cfgScale) || params.cfgScale < 0 || params.cfgScale > 30)) throw new AppError('Krea 2 cfgScale 必须为 0 到 30。');
+  if (params.negativePrompt !== undefined) text(params.negativePrompt, '负面提示词', 10000);
+  if (params.variant !== undefined && !['turbo', 'raw'].includes(params.variant)) throw new AppError('Krea 2 variant 支持 turbo 或 raw。');
+  const samplers = ['euler', 'euler_ancestral', 'euler_cfg_pp', 'euler_ancestral_cfg_pp', 'heun', 'heunpp2', 'dpm_2', 'dpm_2_ancestral', 'lms', 'dpm_fast', 'dpm_adaptive', 'dpmpp_2s_ancestral', 'dpmpp_2s_ancestral_cfg_pp', 'dpmpp_sde', 'dpmpp_sde_gpu', 'dpmpp_2m', 'dpmpp_2m_cfg_pp', 'dpmpp_2m_sde', 'dpmpp_2m_sde_gpu', 'dpmpp_3m_sde', 'dpmpp_3m_sde_gpu', 'ddpm', 'lcm', 'ipndm', 'ipndm_v', 'deis', 'ddim', 'uni_pc', 'uni_pc_bh2', 'res_multistep', 'er_sde'];
+  if (params.sampler !== undefined && !samplers.includes(params.sampler)) throw new AppError('Krea 2 sampler 无效，例如 euler。');
+  if (params.scheduler !== undefined && !['normal', 'karras', 'exponential', 'sgm_uniform', 'simple', 'ddim_uniform', 'beta'].includes(params.scheduler)) throw new AppError('Krea 2 scheduler 无效，例如 beta 或 simple；不要沿用 SDXL 的 eulerA。');
+  if (params.outputFormat !== undefined && !['jpeg', 'png', 'webP'].includes(params.outputFormat)) throw new AppError('outputFormat 支持 jpeg、png、webP。');
+  if (params.loras !== undefined) {
+    if (!plainObject(params.loras)) throw new AppError('Krea 2 loras 必须是 AIR 到权重数字的映射。');
+    for (const [air, weight] of Object.entries(params.loras)) {
+      if (!/^urn:air:krea2:lora:civitai:\d+@\d+$/.test(air) || !Number.isFinite(weight)) throw new AppError('Krea 2 LoRA 需要同系列的完整 AIR 和有限数值权重。');
     }
   }
   return { model, params: structuredClone(params) };

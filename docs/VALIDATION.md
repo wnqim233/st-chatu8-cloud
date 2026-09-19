@@ -1,8 +1,8 @@
 # 验证记录
 
-版本：3.1.0-cloud.3。检查日期：2026-09-19。
+版本：3.1.0-cloud.4。检查日期：2026-09-19。
 
-**已完成源码复用校验、23 项模拟接口测试，以及两种后端的浏览器操作检查。尚未用真实 Key 在完整酒馆实例中付费出图。**
+**已完成源码复用校验、25 项模拟接口测试，以及两种后端的浏览器操作检查。尚未用真实 Key 在完整酒馆实例中付费出图。**
 
 | 检查 | 实际结果与范围 |
 | --- | --- |
@@ -27,7 +27,7 @@ npm run package
 
 浏览器模拟检查先运行 `npm run preview`，再用装有 PySide6 的 Python 运行 `scripts/browser_smoke.py`。测试访问 `127.0.0.1:8765`，不访问真实生图 API、不消耗额度；浏览器结果和截图位于本地 `test-results/`，不打入安装包。
 
-当前自动测试为 23 项。`npm run check` 检查 16 个 JavaScript 文件语法、上游文件校验、7 个原模块指纹及聊天上下文模块的存储键差异、接入点和新增 HTML ID。
+当前自动测试为 25 项。`npm run check` 检查 16 个 JavaScript 文件语法、上游文件校验、7 个原模块指纹及聊天上下文模块的存储键差异、接入点和新增 HTML ID。
 
 仍需真实环境核验的部分：实际酒馆版本及其他扩展兼容性、用户自己的 LLM 与预设、世界书条目命中、两家 API 账号权限及所选模型可用性、真实耗时与费用。按用户要求，暂不核对其世界书。
 
@@ -44,3 +44,5 @@ npm run package
 cloud.3 导入回归：运行 `npm ci`、`npm run preview` 后，用 PySide6 Python 执行 `scripts/settings_smoke.py`。测试加载原版全部设置页、真实样式、jQuery，以及从 index.js 提取的实际文件导入、合并、导航、主题和导入后刷新函数。17 项断言通过：旧模式下云端页仍可访问、手动构造菜单已选中但面板未激活的状态后点击可恢复、两种云端模式下旧 JSON 导入成功、模式和处理器同步、世界书/LLM 测试字段保留、真实 IndexedDB 内两家 Key 保留、非法根对象拒绝。桌面和 390px 窄屏截图已检查，无横向溢出或 JS 错误。
 
 此回归使用构造的旧版配置，尚未获取用户实际导入文件；原完整表单加载依赖酒馆会话，在夹具中仅模拟其异步完成、主题和模式填入，后端处理器记录调用。不能据此声称已在用户手机完整复现原始触发条件。结果位于 `test-results/settings-import.json`。
+
+cloud.4：两项 Krea 2 回归通过，核对估价与提交的工作流完全一致，使用 imageGen/comfy/krea2/turbo 和指定 diffusionModel；验证 raw、diffusionmodel、LoRA 映射及非法尺寸/旧调度器拒绝。参数约束对照 https://orchestration.civitai.com/openapi/v2-consumers.json 的 ComfyKrea2TurboCreateImageGenInput、ComfyKrea2RawCreateImageGenInput、ComfySampler、ComfyScheduler。未使用真实 Key，未向平台发起预估或付费生成。

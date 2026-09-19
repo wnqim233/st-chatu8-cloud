@@ -4,7 +4,7 @@
 
 修改者：Codex，受工作区所有者委托。日期：2026-09-19。原作者：从前跟你一样。沿用项目的 [Aladdin Free Public License](LICENSE)，原版权、声明、署名和许可证保留。分发或修改本版本须遵守该许可证；不提供额外保证。
 
-本次修改目的：保留上游现有功能，作为独立前端扩展增加 WaveSpeed 和 Civitai 文生图支持；无需服务端插件。版本 3.1.0-cloud.3。
+本次修改目的：保留上游现有功能，作为独立前端扩展增加 WaveSpeed 和 Civitai 文生图支持；无需服务端插件。版本 3.1.0-cloud.4。
 
 | 上游文件 | 修改内容 |
 | --- | --- |
@@ -37,3 +37,7 @@ Civitai 使用官方 v2 Orchestration 文生图接口，支持 Checkpoint AIR、
 - 再次点击已选中的菜单也会恢复对应面板；初始化等待原配置加载完成。
 - WaveSpeed / Civitai 导航始终可访问；旧配置导入保留正在使用的云端模式与本浏览器存储标识。
 - 新增完整设置 HTML、原导航/导入函数与真实 FileReader / IndexedDB 的浏览器回归检查；jQuery 仅作为开发测试依赖。
+
+### cloud.4 Krea 2 接入
+
+依据 Civitai v2 官方 OpenAPI（2026-09-19 获取）增加 Krea 2 专用 imageGen 工作流。按 AIR 识别生态，完整 AIR 放入 diffusionModel，支持 turbo/raw、独立 sampler/scheduler、loras 权重映射和 diffusionmodel 类型。复用现有免费预估、限额、任务恢复和图片缓存；保留 SDXL 等旧流程。增加两项模拟回归。

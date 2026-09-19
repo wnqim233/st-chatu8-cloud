@@ -21,7 +21,7 @@
     <label class="ws-check"><input id="ws-civitai-clear-key" type="checkbox">清除已保存的 Civitai Key</label>
     <div class="st-chatu8-field"><label for="ws-civitai-model">Checkpoint AIR</label><input id="ws-civitai-model" value="urn:air:sdxl:checkpoint:civitai:101055@128078" spellcheck="false"></div>
     <div class="st-chatu8-field"><label for="ws-civitai-params">Civitai 参数 JSON</label><textarea id="ws-civitai-params" rows="6" spellcheck="false">{"width":1024,"height":1024,"steps":25,"cfgScale":5,"scheduler":"eulerA","quantity":1}</textarea></div>
-    <p class="ws-hint">使用 Civitai v2 文生图工作流。填写支持平台在线生成的模型 AIR；LoRA 放在 additionalNetworks 中。负面词字段为 negativePrompt，尺寸自动对应原插件选择。省略 seed 则随机生成。</p>
+    <p class="ws-hint">填写支持平台在线生成的完整模型 AIR。Krea 2 自动使用专用工作流，参数示例：{"width":1024,"height":1024,"steps":8,"cfgScale":1,"sampler":"euler","scheduler":"beta","quantity":1}；默认 turbo，Raw 模型需加 "variant":"raw" 并设置对应参数。Krea 2 的 LoRA 填入 loras（AIR 到权重数字的映射），其他模型仍用 additionalNetworks。省略 seed 则随机生成。</p>
     <details><summary>LoRA 参数格式示例</summary><pre class="ws-code">"additionalNetworks": {
   "urn:air:sdxl:lora:civitai:模型ID@版本ID": {"strength": 0.8}
 }</pre><p class="ws-hint">把这一项加入上面的 JSON 对象，并替换成真实的 LoRA AIR；LoRA 与主模型的基础架构须兼容。</p></details>
