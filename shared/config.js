@@ -12,6 +12,14 @@ export class AppError extends Error {
   constructor(message, status = 400) { super(message); this.status = status; }
 }
 
+// Transfer provider parameters without transferring browser identity, credentials or jobs.
+export function portableConfig(config) {
+  if (!plainObject(config)) throw new AppError('云端生图配置必须是 JSON 对象。');
+  return Object.fromEntries(Object.keys(DEFAULT_CONFIG)
+    .filter(key => !['wavespeedKey', 'civitaiKey'].includes(key) && Object.hasOwn(config, key))
+    .map(key => [key, structuredClone(config[key])]));
+}
+
 export function plainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

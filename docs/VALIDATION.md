@@ -1,6 +1,6 @@
 # 验证记录
 
-版本：3.1.0-cloud.5。检查日期：2026-09-19。
+版本：3.1.0-cloud.6。检查日期：2026-09-19。
 
 **已完成源码复用校验、27 项模拟接口测试，以及两种后端的浏览器操作检查。Civitai Krea 2 已完成一张真实风景图测试；未验证 LLM/世界书到聊天回填的完整链路。**
 
@@ -27,7 +27,7 @@ npm run package
 
 浏览器模拟检查先运行 `npm run preview`，再用装有 PySide6 的 Python 运行 `scripts/browser_smoke.py`。测试访问 `127.0.0.1:8765`，不访问真实生图 API、不消耗额度；浏览器结果和截图位于本地 `test-results/`，不打入安装包。
 
-当前自动测试为 27 项。`npm run check` 检查 16 个 JavaScript 文件语法、上游文件校验、7 个原模块指纹及聊天上下文模块的存储键差异、接入点和新增 HTML ID。
+当前自动测试为 28 项。`npm run check` 检查 16 个 JavaScript 文件语法、上游文件校验、7 个原模块指纹及聊天上下文模块的存储键差异、接入点和新增 HTML ID。
 
 仍需真实环境核验的部分：实际酒馆版本及其他扩展兼容性、用户自己的 LLM 与预设、世界书条目命中、两家 API 账号权限及所选模型可用性、真实耗时与费用。按用户要求，暂不核对其世界书。
 
@@ -48,3 +48,7 @@ cloud.3 导入回归：运行 `npm ci`、`npm run preview` 后，用 PySide6 Pyt
 cloud.4：两项 Krea 2 回归通过，核对估价与提交的工作流完全一致，使用 imageGen/comfy/krea2/turbo 和指定 diffusionModel；验证 raw、diffusionmodel、LoRA 映射及非法尺寸/旧调度器拒绝。参数约束对照 https://orchestration.civitai.com/openapi/v2-consumers.json 的 ComfyKrea2TurboCreateImageGenInput、ComfyKrea2RawCreateImageGenInput、ComfySampler、ComfyScheduler。未使用真实 Key，未向平台发起预估或付费生成。
 
 cloud.5 真实浏览器 API 验证：在用户授权下，使用其已保存配置的隔离 Chrome 副本、实际酒馆来源与插件 BrowserStore/任务引擎，生成一张 1024×1024 风景图。Krea 2 Turbo 主模型、两项 LoRA，8 步、CFG 1；平台预估与返回 cost.total 均为 17 Buzz，工作流 succeeded。发现 Civitai 图片下载需要 HTTP 跳转，修复为仅允许已知 Civitai blob 域名跟随跳转，并核对最终域名；不附带 Key 或浏览器凭据。使用同一任务 ID 恢复下载后 completed，JPEG 成功存入 IndexedDB 并导出核验，没有再次提交生成。新增两项跳转回归，总计 27 项通过。此测试只验证 API、LoRA 工作流和图片下载，不代表 LLM 提示词、世界书触发或自动插入聊天已实测。
+
+cloud.6：新增配置迁移回归，验证模型、LoRA、尺寸与 Buzz 上限往返导入，目标 Key 和存储标识保留，非法版本拒绝；旧 JSON 导入保持兼容。个人配置和世界书迁移包仅写入本地 dist，不进入公开仓库。
+
+cloud.6 验证结果：28 项自动测试通过；16 个 JS 语法检查及上游指纹检查通过；真实 Chrome 在 390×844 手机视口完成 20 项设置导入检查，包括旧版 JSON、云端参数、Key 保留与页面可见性。Windows 临时目录清理加入有限重试，处理 ENOTEMPTY 文件释放延迟。

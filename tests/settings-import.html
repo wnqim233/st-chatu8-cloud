@@ -2,17 +2,20 @@
 <script src="/node_modules/jquery/dist/jquery.min.js"></script>
 <script type="module">
 import { createBrowserApi } from '/wavespeed/browser.js';
+import { createWaveSpeedAdapter } from '/wavespeed/adapter.js';
 const source = await (await fetch('/index.js')).text();
 const fn = name => { const start = source.search(new RegExp(`(?:async )?function ${name}\\(`)); const end = source.indexOf('\n}', start); if(start<0||end<0)throw Error(name); return source.slice(start,end+2); };
 const settings = {mode:'novelai',lastTab:'wavespeed',videoChannel:'comfyui'};
 const results=[];
 const check=(name,pass)=>{results.push({name,pass:!!pass});if(!pass)throw Error(name);};
+let browserApi;
 const context = {
   settings2:settings, extensionName:'st-chatu8-cloud', extension_settings72:{'st-chatu8-cloud':settings},
   extensionFolderPath:'',
   tabIds:JSON.parse(source.match(/var tabIds = (\[[^;]+\]);/)[1]),
   MODE_NAV_TABS:JSON.parse(source.match(/var MODE_NAV_TABS = (\[[^;]+\]);/)[1]),
   VIDEO_NAV_TABS:JSON.parse(source.match(/var VIDEO_NAV_TABS = (\[[^;]+\]);/)[1]),
+  getWaveSpeedAdapter:()=>createWaveSpeedAdapter({api:browserApi,settings:()=>settings,saveSettings(){}}),
   saveSettingsDebounced45(){}, async initJiuguanStorage(){},
   updateGenerationModeHandlers(){context.handlerMode=settings.mode;},
   initHelpTipInteractions(){},injectHelpTips(){},initCollapsibleSections(){},
@@ -41,7 +44,7 @@ try {
   check('blank-panel state reproduced', !regression.state().waveVisible);
   click('wavespeed');
   check('clicking the selected link restores the panel', regression.state().waveVisible && regression.state().panels.length===1);
-  const browserApi=createBrowserApi({settings:()=>settings,saveSettings(){}});
+  browserApi=createBrowserApi({settings:()=>settings,saveSettings(){}});
   await browserApi('/config',{wavespeedKey:'regression-fake-key',civitaiKey:'regression-fake-civitai-key'});
   const localId=settings.cloudStorageId;
   let complete;
@@ -78,6 +81,11 @@ try {
   }
   const config=await browserApi('/config');
   check('both provider keys survive imports',config.hasWavespeedKey&&config.hasCivitaiKey);
+  const cloudImageConfig={version:1,config:{civitaiModel:'urn:air:krea2:diffusionmodel:civitai:2735032@3248918',civitaiParams:{width:1024,height:1024,steps:8,cfgScale:1,sampler:'euler',scheduler:'beta',quantity:1,loras:{'urn:air:krea2:lora:civitai:2742129@3083986':0.8}},civitaiMaxBuzz:80}};
+  check('portable file import succeeds',(await importFile({mode:'civitai',cloudImageConfig}))==='设置已导入。');
+  const transferred=await browserApi('/config');
+  check('portable model and LoRA restored in browser storage',transferred.civitaiModel===cloudImageConfig.config.civitaiModel&&transferred.civitaiParams.loras['urn:air:krea2:lora:civitai:2742129@3083986']===0.8&&transferred.civitaiMaxBuzz===80);
+  check('portable import preserves target identity and keys',settings.cloudStorageId===localId&&transferred.hasCivitaiKey&&transferred.hasWavespeedKey&&!Object.hasOwn(settings,'cloudImageConfig'));
   const before=JSON.stringify(settings);
   check('invalid settings rejected', (await importFile([])).includes('失败') && JSON.stringify(settings)===before);
   window.regression.result={passed:true,results};

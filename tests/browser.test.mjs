@@ -83,3 +83,27 @@ test('browser keeps redirect blocking for other hosts and rejects foreign Civita
     const response=new Response(png);Object.defineProperty(response,'url',{value:'https://example.net/image'});return response;
   }),/非预期地址/);
 });
+
+test('cloud settings transfer restores model and LoRAs but preserves target credentials', async () => {
+  const { createWaveSpeedAdapter } = await import('../wavespeed/adapter.js');
+  const sourceStore=memoryStore(), targetStore=memoryStore();
+  const sourceSettings={cloudStorageId:'source'},targetSettings={cloudStorageId:'target'};
+  const sourceApi=createBrowserApi({settings:()=>sourceSettings},{storeFactory:()=>sourceStore});
+  const targetApi=createBrowserApi({settings:()=>targetSettings},{storeFactory:()=>targetStore});
+  await sourceApi('/config',{civitaiKey:'source-secret',civitaiModel:'urn:air:krea2:diffusionmodel:civitai:2735032@3248918',civitaiParams:{width:640,height:960,steps:8,cfgScale:1,sampler:'euler',scheduler:'beta',quantity:1,loras:{'urn:air:krea2:lora:civitai:2742129@3083986':0.8}},civitaiMaxBuzz:70});
+  await targetApi('/config',{civitaiKey:'target-secret'});
+  const source=createWaveSpeedAdapter({api:sourceApi}),target=createWaveSpeedAdapter({api:targetApi});
+  const backup=JSON.parse(JSON.stringify(await source.exportConfig()));
+  assert.equal(JSON.stringify(backup).includes('source-secret'),false);
+  backup.config.civitaiKey='malicious-replacement';backup.config.clear_civitaiKey=true;
+  await target.importConfig(backup);
+  const restored=await targetStore.config();
+  assert.equal(restored.civitaiKey,'target-secret');assert.equal(restored.civitaiMaxBuzz,70);
+  assert.deepEqual(restored.civitaiParams,(await sourceStore.config()).civitaiParams);
+  assert.equal(restored.civitaiModel,(await sourceStore.config()).civitaiModel);
+  assert.equal(targetSettings.cloudStorageId,'target');assert.deepEqual(await targetStore.jobs(),[]);
+  await target.importConfig(undefined);
+  await assert.rejects(target.importConfig({version:2,config:{}}),/版本/);
+  await assert.rejects(target.importConfig({version:1,config:[]}),/JSON 对象/);
+  assert.equal((await targetStore.config()).civitaiKey,'target-secret');
+});

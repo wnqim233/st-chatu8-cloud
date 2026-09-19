@@ -4,6 +4,7 @@
  */
 import { makeId, imagePath, mapParameters, providerConfig, waitForJob, readLocalImage, LABELS } from './client.js';
 import { createBrowserApi } from './browser.js';
+import { portableConfig } from '../shared/config.js';
 
 export function createWaveSpeedAdapter(deps) {
   const api = deps.api || createBrowserApi(deps);
@@ -216,5 +217,12 @@ export function createWaveSpeedAdapter(deps) {
     // Load browser configuration when this page is opened.
     document.querySelector('.st-chatu8-nav-link[data-tab="wavespeed"]')?.addEventListener('click', () => { if (!$('status').dataset.loaded) load().then(() => { $('status').dataset.loaded = 'true'; }).catch(e => notify(e.message, true)); });
   }
-  return { updateMode, mount, generate, restore, prepare };
+  async function exportConfig() { return { version: 1, config: portableConfig(await api('/config')) }; }
+  async function importConfig(backup) {
+    if (backup === undefined) return;
+    if (!backup || backup.version !== 1) throw new Error('不支持的云端生图配置版本。');
+    const config = await api('/config', portableConfig(backup.config));
+    if ($('model')) fill(config);
+  }
+  return { updateMode, mount, generate, restore, prepare, exportConfig, importConfig };
 }

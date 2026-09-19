@@ -4,7 +4,7 @@
 
 修改者：Codex，受工作区所有者委托。日期：2026-09-19。原作者：从前跟你一样。沿用项目的 [Aladdin Free Public License](LICENSE)，原版权、声明、署名和许可证保留。分发或修改本版本须遵守该许可证；不提供额外保证。
 
-本次修改目的：保留上游现有功能，作为独立前端扩展增加 WaveSpeed 和 Civitai 文生图支持；无需服务端插件。版本 3.1.0-cloud.5。
+本次修改目的：保留上游现有功能，作为独立前端扩展增加 WaveSpeed 和 Civitai 文生图支持；无需服务端插件。版本 3.1.0-cloud.6。
 
 | 上游文件 | 修改内容 |
 | --- | --- |
@@ -45,3 +45,5 @@ Civitai 使用官方 v2 Orchestration 文生图接口，支持 Checkpoint AIR、
 ### cloud.5 Civitai 图片下载修复
 
 真实生成成功后，Civitai 的 blob 地址会跳转到签名下载地址；原浏览器下载器禁止所有跳转，导致误报下载失败。仅为两个已知 Civitai orchestration 域名允许跟随跳转，核对最终 HTTPS Civitai 域名，保持不发送凭据；其他地址仍禁止跳转。原任务可通过查询恢复下载，无需重复生成。
+
+- cloud.6：沿用原设置导入导出入口，补入不含云端 Key 的 WaveSpeed / Civitai 参数快照；导入恢复浏览器参数并保留目标设备身份、Key 与任务。原世界书/LLM流程保持不变。

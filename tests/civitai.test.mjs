@@ -15,7 +15,7 @@ const config = { ...DEFAULT_CONFIG, civitaiKey: 'fake-civitai-key', wavespeedKey
 const input = (id = 'civitai-request-0001') => ({ id, provider: 'civitai', prompt: 'rainy street', source: { chatId: 'c', messageId: 'm', hash: 'h' }, cacheTag: '原标签' });
 async function setup(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'civitai-test-'));
-  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  t.after(() => fs.rm(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }));
   const dirs = { root, userImages: path.join(root, 'images') };
   return { db: new UserStore(dirs), dirs };
 }

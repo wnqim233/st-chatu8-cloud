@@ -87742,8 +87742,12 @@ function onRestoreDefaultSettingsClick() {
     }
   });
 }
-function onExportSettingsClick() {
-  const settingsString = JSON.stringify(extension_settings72[extensionName], null, 4);
+async function onExportSettingsClick() {
+  let cloudImageConfig;
+  try { cloudImageConfig = await getWaveSpeedAdapter().exportConfig(); }
+  catch (error) { alert(`导出失败：${error.message}`); return; }
+  const { cloudStorageId, wavespeedRestoredJobs, ...settings } = extension_settings72[extensionName];
+  const settingsString = JSON.stringify({ ...settings, cloudImageConfig }, null, 4);
   const blob = new Blob([settingsString], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -87760,7 +87764,7 @@ function mergeImportedSettings(current, imported) {
   if (!imported || typeof imported !== "object" || Array.isArray(imported)) {
     throw new Error("设置文件必须是 JSON 对象");
   }
-  const { cloudStorageId, __proto__: ignoredPrototype, constructor: ignoredConstructor, prototype: ignoredProperty, ...values } = imported;
+  const { cloudStorageId, cloudImageConfig, wavespeedRestoredJobs, __proto__: ignoredPrototype, constructor: ignoredConstructor, prototype: ignoredProperty, ...values } = imported;
   if (["wavespeed", "civitai"].includes(current.mode) && !["wavespeed", "civitai"].includes(values.mode)) {
     values.mode = current.mode;
   }
@@ -87785,6 +87789,8 @@ function onImportSettingsClick() {
       reader.onload = async (e) => {
         try {
           const importedSettings = JSON.parse(e.target.result);
+          if (!importedSettings || typeof importedSettings !== "object" || Array.isArray(importedSettings)) throw new Error("设置文件必须是 JSON 对象");
+          await getWaveSpeedAdapter().importConfig(importedSettings.cloudImageConfig);
           mergeImportedSettings(extension_settings72[extensionName], importedSettings);
           saveSettingsDebounced45();
           try {
@@ -110827,7 +110833,7 @@ if (typeof window !== "undefined" && typeof window.requestIdleCallback === "func
 window.imagesid = "";
 window.xiancheng = true;
 async function checkForUpdates2() {
-  window.chatu8LocalVersion = "3.1.0-cloud.5";
+  window.chatu8LocalVersion = "3.1.0-cloud.6";
   const forkVersionLabel = document.getElementById("ch-version-display");
   if (forkVersionLabel) forkVersionLabel.textContent = `v${window.chatu8LocalVersion}`;
   return;
