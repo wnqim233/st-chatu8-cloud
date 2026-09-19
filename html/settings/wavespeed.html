@@ -41,6 +41,8 @@
     <h3>任务与恢复</h3>
     <p class="ws-hint">刷新后点击「查询任务」。已经提交的任务只查询原 ID；完成后可放回原插件缓存，再刷新消息显示。任务与图片先保存在当前浏览器，完成后沿用原插件缓存设置。清理网站数据前请备份图片。</p>
     <div class="ws-actions"><button type="button" id="ws-jobs-refresh" class="menu_button">查询任务</button></div>
+    <p class="ws-hint">同时最多提交 2 个生图任务，其余自动排队；完成或明确失败后自动补位。排队顺序、模型和提示词保存在当前浏览器，刷新后继续；关闭页面或手机休眠时暂停调度，重新打开后继续。提交结果待核对的任务暂占名额，请补填平台任务 ID 恢复。</p>
+    <p id="ws-queue-summary" class="ws-status" role="status">进行中 0/2 · 等候 0 张</p>
     <div id="ws-jobs"><p class="ws-hint">尚未读取任务。</p></div>
   </div>
   <div class="st-chatu8-settings-section">

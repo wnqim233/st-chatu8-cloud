@@ -3,6 +3,7 @@
  */
 import { DEFAULT_CONFIG, AppError, publicConfig, updateConfig, safeError } from '../shared/config.js';
 import { WaveSpeedService, publicJob } from '../shared/jobs.js';
+import { createJobQueue } from '../shared/queue.js';
 import { withCivitai } from '../shared/civitai.js';
 import { limitedBody } from '../shared/http.js';
 
@@ -45,8 +46,8 @@ export class BrowserStore {
     return this.exclusive('journal', async () => {
       const jobs = await this.jobs(); const index = jobs.findIndex(item => item.id === job.id);
       if (index >= 0) jobs[index] = job; else jobs.push(job);
-      const terminal = new Set(jobs.filter(item => ['completed', 'failed'].includes(item.status)).slice(-200).map(item => item.id));
-      const retained = jobs.filter(item => !['completed', 'failed'].includes(item.status) || terminal.has(item.id));
+      const terminal = new Set(jobs.filter(item => ['completed', 'failed', 'cancelled'].includes(item.status)).slice(-200).map(item => item.id));
+      const retained = jobs.filter(item => !['completed', 'failed', 'cancelled'].includes(item.status) || terminal.has(item.id));
       const removed = jobs.filter(item => !retained.includes(item));
       await this.access('readwrite', store => {
         store.put(retained, 'jobs');
@@ -109,7 +110,8 @@ export function createBrowserApi(deps, { fetcher = globalThis.fetch, storeFactor
     const scope = settings.cloudStorageId;
     if (!sessions.has(scope)) {
       const store = storeFactory(scope); const options = { fetcher, ...(now ? { now } : {}) };
-      sessions.set(scope, { store, wavespeed: new WaveSpeedService(store, options), civitai: new CivitaiService(store, options) });
+      const user = { store, wavespeed: new WaveSpeedService(store, options), civitai: new CivitaiService(store, options) };
+      user.queue = createJobQueue(user); sessions.set(scope, user);
     }
     return sessions.get(scope);
   }
@@ -125,17 +127,19 @@ export function createBrowserApi(deps, { fetcher = globalThis.fetch, storeFactor
       }
       if (route === '/models') return await user.wavespeed.listModels(config);
       if (route === '/civitai/estimate') return await user.civitai.estimate(body, config);
+      if (route === '/jobs/tick') { await user.queue.tick(config); return await Promise.all((await store.jobs()).reverse().map(job => store.expose(job))); }
       if (route === '/jobs' && body === undefined) return await Promise.all((await store.jobs()).reverse().map(job => store.expose(job)));
       if (route === '/jobs') {
         const provider = body?.provider || 'wavespeed';
         if (!['wavespeed', 'civitai'].includes(provider)) throw new AppError('未知的生图后端。');
         return await store.expose(await user[provider].submit(body, config));
       }
-      const match = route.match(/^\/jobs\/([a-zA-Z0-9-]+)\/(refresh|recover|dismiss)$/);
+      const match = route.match(/^\/jobs\/([a-zA-Z0-9-]+)\/(refresh|recover|dismiss|cancel)$/);
       if (match) {
         const job = await store.job(match[1]); if (!job) throw new AppError('任务不存在。');
         const service = user[job.provider || 'wavespeed'];
-        const result = match[2] === 'refresh' ? await service.refresh(job.id, config) : match[2] === 'recover' ? await service.recover(job.id, body?.taskId) : await service.dismiss(job.id);
+        if (match[2] === 'refresh') await user.queue.tick(config);
+        const result = match[2] === 'refresh' ? await service.refresh(job.id, config) : match[2] === 'recover' ? await service.recover(job.id, body?.taskId) : match[2] === 'cancel' ? await service.cancel(job.id) : await service.dismiss(job.id);
         return await store.expose(result);
       }
       throw new AppError('不支持的操作。');

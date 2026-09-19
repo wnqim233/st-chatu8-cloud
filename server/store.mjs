@@ -37,8 +37,8 @@ export class UserStore {
       const index = jobs.findIndex(j => j.id === job.id);
       if (index >= 0) jobs[index] = job; else jobs.push(job);
       // Retain every unfinished job; cap only terminal history.
-      const terminal = new Set(jobs.filter(j => ['completed', 'failed'].includes(j.status)).slice(-200).map(j => j.id));
-      await atomicJson(path.join(this.root, 'jobs.json'), jobs.filter(j => !['completed', 'failed'].includes(j.status) || terminal.has(j.id)));
+      const terminal = new Set(jobs.filter(j => ['completed', 'failed', 'cancelled'].includes(j.status)).slice(-200).map(j => j.id));
+      await atomicJson(path.join(this.root, 'jobs.json'), jobs.filter(j => !['completed', 'failed', 'cancelled'].includes(j.status) || terminal.has(j.id)));
       return job;
     });
   }

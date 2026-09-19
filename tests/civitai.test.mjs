@@ -102,8 +102,10 @@ test('server routes preserve each job provider after a backend switch, and keep 
   const ws = await call('submit', { ...input('wavespeed-request-001'), provider: 'wavespeed' });
   assert.notEqual(cv.id, ws.id); time = 5000;
   assert.equal((await call('refresh', {}, cv.id)).status, 'failed');
-  assert.ok(calls.at(-1).includes('orchestration.civitai.com/v2/consumer/workflows/civitai-id'));
-  await call('refresh', {}, ws.id); assert.ok(calls.at(-1).includes('api.wavespeed.ai'));
+  assert.ok(calls.some(url => url.includes('orchestration.civitai.com/v2/consumer/workflows/civitai-id')));
+  assert.equal((await call('refresh', {}, ws.id)).status, 'failed');
+  assert.ok(calls.some(url => url.includes('api.wavespeed.ai/api/v3/predictions/wavespeed-id/result')));
+  assert.ok(!calls.some(url => url.includes('workflows/wavespeed-id') || url.includes('predictions/civitai-id')));
 });
 
 test('Krea 2 uses imageGen/comfy with a custom diffusion AIR for both estimate and submission', async t => {

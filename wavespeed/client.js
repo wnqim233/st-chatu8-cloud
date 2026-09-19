@@ -1,7 +1,7 @@
 /* Added by Codex for the workspace owner, 2026-09-19.
  * WaveSpeed adapter for st-chatu8. Aladdin Free Public License; see ../LICENSE.
  */
-export const LABELS = { submitting: '正在提交', submitted: '已提交', processing: '生成中', download_failed: '等待保存图片', completed: '图片已保存', failed: '未完成', unknown: '提交结果待核对' };
+export const LABELS = { queued: '排队中', cancelled: '已取消排队', submitting: '正在提交', submitted: '已提交', processing: '生成中', download_failed: '等待保存图片', completed: '图片已保存', failed: '未完成', unknown: '提交结果待核对' };
 
 export function makeId() {
   const bytes = new Uint8Array(16); crypto.getRandomValues(bytes);
@@ -30,13 +30,14 @@ export function providerConfig(config, provider) {
 }
 
 export async function waitForJob(api, initial, { onUpdate = () => {}, sleep = ms => new Promise(r => setTimeout(r, ms)), now = Date.now, timeout = 240000 } = {}) {
-  const start = now();
+  let start;
   let job = initial;
   while (true) {
     onUpdate(job);
     if (job.status === 'completed') return job;
-    if (['failed', 'unknown'].includes(job.status)) throw new Error(job.error || LABELS[job.status]);
-    if (now() - start >= timeout) throw new Error(`任务还未完成，已保留任务 ID ${job.taskId || job.id}。请在 WaveSpeed / Civitai 页查询恢复，勿重复生图。`);
+    if (['failed', 'unknown', 'cancelled'].includes(job.status)) throw new Error(job.error || LABELS[job.status]);
+    if (job.status !== 'queued' && start === undefined) start = now();
+    if (start !== undefined && now() - start >= timeout) throw new Error(`任务还未完成，已保留任务 ID ${job.taskId || job.id}。请在 WaveSpeed / Civitai 页查询恢复，勿重复生图。`);
     await sleep(3000);
     try { job = await api(`/jobs/${encodeURIComponent(job.id)}/refresh`, {}); }
     catch (error) { onUpdate({ ...job, error: error.message }); }

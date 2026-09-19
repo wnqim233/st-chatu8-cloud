@@ -3,6 +3,7 @@ import path from 'node:path';
 import { UserStore } from './store.mjs';
 import { AppError, publicConfig, updateConfig, safeError } from './config.mjs';
 import { WaveSpeedService, publicJob } from './wavespeed.mjs';
+import { createJobQueue } from '../shared/queue.js';
 import { CivitaiService } from './civitai.mjs';
 
 export const info = { id: 'wavespeed-illustrator', name: 'st-chatu8 WaveSpeed / Civitai 后端', description: '为 st-chatu8 提供 WaveSpeed 与 Civitai 异步生图、本地图片保存' };
@@ -16,7 +17,8 @@ export function createHandlers({ fetcher = fetch, checkUrl, now } = {}) {
     if (!users.has(key)) {
       const store = new UserStore(dirs);
       const options = { fetcher, ...(checkUrl ? { checkUrl } : {}), ...(now ? { now } : {}) };
-      users.set(key, { store, wavespeed: new WaveSpeedService(store, options), civitai: new CivitaiService(store, options) });
+      const user = { store, wavespeed: new WaveSpeedService(store, options), civitai: new CivitaiService(store, options) };
+      user.queue = createJobQueue(user); users.set(key, user);
     }
     return users.get(key);
   }
@@ -52,7 +54,9 @@ export function createHandlers({ fetcher = fetch, checkUrl, now } = {}) {
     jobs: route(async (_req, { store }) => (await store.jobs()).map(publicJob).reverse()),
     estimate: route(async (req, { civitai }, config) => civitai.estimate(req.body, config)),
     submit: route(async (req, user, config) => publicJob(await provider(user, req.body?.provider).submit(req.body, config))),
-    refresh: route(async (req, user, config) => publicJob(await (await jobProvider(user, req.params.id)).refresh(req.params.id, config))),
+    tick: route(async (_req, user, config) => { await user.queue.tick(config); return (await user.store.jobs()).map(publicJob).reverse(); }),
+    refresh: route(async (req, user, config) => { await user.queue.tick(config); return publicJob(await (await jobProvider(user, req.params.id)).refresh(req.params.id, config)); }),
+    cancel: route(async (req, user) => publicJob(await (await jobProvider(user, req.params.id)).cancel(req.params.id))),
     recover: route(async (req, { wavespeed }) => publicJob(await wavespeed.recover(req.params.id, req.body?.taskId))),
     dismiss: route(async (req, { wavespeed }) => publicJob(await wavespeed.dismiss(req.params.id))),
   };
@@ -67,6 +71,8 @@ export async function init(router) {
   router.post('/civitai/estimate', handlers.estimate);
   router.get('/jobs', handlers.jobs);
   router.post('/jobs', handlers.submit);
+  router.post('/jobs/tick', handlers.tick);
+  router.post('/jobs/:id/cancel', handlers.cancel);
   router.post('/jobs/:id/refresh', handlers.refresh);
   router.post('/jobs/:id/recover', handlers.recover);
   router.post('/jobs/:id/dismiss', handlers.dismiss);
