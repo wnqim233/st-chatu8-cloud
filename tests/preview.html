@@ -1,0 +1,38 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>st-chatu8 WaveSpeed / Civitai 接入测试</title><link rel="stylesheet" href="/style.css"><style>body { margin: 0; padding: 20px; background:#17191f; color:#ddd; font:14px/1.6 system-ui,sans-serif; } .fixture { max-width:1000px; margin:auto; } .fixture>p { color:#bbb; } #st-chatu8-settings { display:block!important; } #st-chatu8-settings .st-chatu8-content { max-height: none; padding:20px; } .st-chatu8-nav-link { display:inline-block; padding:8px 12px; color:#baa9ef; } .menu_button { background:#303240; color:#eee; border:1px solid #777; padding:8px 12px; border-radius:7px; cursor:pointer; } #fixture-result { white-space:pre-wrap; overflow-wrap:anywhere; } #ch-tab-wavespeed .st-chatu8-settings-section { background:#222530; border:1px solid #434755; border-radius:12px; margin-bottom:18px; padding:20px; } @media(max-width:560px){body{padding:8px;} #st-chatu8-settings .st-chatu8-content{padding:4px;} #ch-tab-wavespeed .st-chatu8-settings-section{padding:14px;} .st-chatu8-field{flex-direction:column!important; gap:6px;}}</style></head><body><div class="fixture"><h1>智绘姬 · WaveSpeed / Civitai</h1><p>本地接入测试：使用真实浏览器适配与 IndexedDB；无服务端插件；WaveSpeed / Civitai 响应为模拟数据，不会计费。</p><div id="st-chatu8-settings"><nav><a href="#" class="st-chatu8-nav-link" data-tab="wavespeed">WaveSpeed</a></nav><select id="mode"><option value="sd">SD</option><option value="wavespeed">WaveSpeed</option><option value="civitai">Civitai</option></select><button id="fixture-generate" class="menu_button">发送原插件生图事件</button><pre id="fixture-result"></pre><div class="st-chatu8-content"></div></div></div><script type="module">
+import {createWaveSpeedAdapter} from '/wavespeed/adapter.js';
+const handlers=new Map(); const events={on:(k,fn)=>{if(!handlers.has(k))handlers.set(k,new Set());handlers.get(k).add(fn)},removeListener:(k,fn)=>handlers.get(k)?.delete(fn),emit:(k,data)=>{for(const fn of handlers.get(k)||[])fn(data)}};
+window.fixture={responses:[],cache:[],calls:[]};
+const settings=JSON.parse(localStorage.getItem('fixture-settings')||'{"mode":"wavespeed","cache":"1"}');
+const saveSettings=()=>localStorage.setItem('fixture-settings',JSON.stringify(settings));
+window.fixture.requests=[];
+const nativeFetch=window.fetch.bind(window);
+let count=0;
+window.fetch=async(url,options={})=>{
+ const u=String(url);window.fixture.requests.push(u);
+ const json=data=>new Response(JSON.stringify(data),{headers:{'content-type':'application/json'}});
+ if(u.startsWith('https://api.wavespeed.ai/')){
+  if(u.endsWith('/models'))return json({code:200,data:[{model_id:'wavespeed-ai/z-image/turbo',name:'Z-Image Turbo',type:'text-to-image'}]});
+  if(options.method==='POST')return json({code:200,data:{id:'fixture-'+(++count),status:'created'}});
+  return json({code:200,data:{status:'completed',outputs:['https://fixture.invalid/ws.png']}});
+ }
+ if(u.startsWith('https://orchestration.civitai.com/')){
+  if(u.includes('whatif'))return json({cost:{total:8}});
+  if(options.method==='POST')return json({id:'civitai-fixture-'+(++count),status:'scheduled'});
+  return json({status:'succeeded',steps:[{output:{images:[{available:true,url:'https://fixture.invalid/cv.png'}]}}]});
+ }
+ if(u.startsWith('https://fixture.invalid/')){
+  const bytes=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aSUcAAAAASUVORK5CYII='),c=>c.charCodeAt(0));
+  return new Response(bytes,{headers:{'content-type':'image/png'}});
+ }
+ return nativeFetch(url,options);
+};
+window.jQuery=el=>({trigger:()=>{settings.mode=el.value;adapter.updateMode()}});
+const context={getRequestHeaders:()=>({'Content-Type':'application/json'}),getCurrentChatId:()=> 'fixture-chat',characters:[{avatar:'fixture.png'}],characterId:0};
+document.querySelector('.st-chatu8-content').innerHTML=await fetch('/html/settings/wavespeed.html').then(r=>r.text());
+const adapter=createWaveSpeedAdapter({context:()=>context,settings:()=>settings,enabled:()=>true,events,eventTypes:{GENERATE_IMAGE_REQUEST:'generate-image-request',GENERATE_IMAGE_RESPONSE:'generate-image-response'},initializeImages:()=>{},cacheImage:async(...args)=>window.fixture.cache.push(args),replacePrompt:async p=>({modifiedPrompt:p,insertions:{}}),replaceCharacter:p=>p,parseRoles:()=>({}),composePrompt:async(a,p,b)=>[a,p,b].filter(Boolean).join(', '),taskQueue:{addTask:()=> 'fixture-task',updateStatus:()=>{},completeTask:()=>{}},record:(...a)=>window.fixture.calls.push(a),log:console.log,saveSettings});
+adapter.mount();adapter.updateMode();
+events.on('generate-image-response',r=>{window.fixture.responses.push(r);document.getElementById('fixture-result').textContent=JSON.stringify({...r,imageData:r.imageData?.slice(0,50)},null,2)});
+document.getElementById('fixture-generate').onclick=()=>events.emit('generate-image-request',{id:'fixture-request-'+Date.now(),prompt:'A lone traveler under a lantern in a rainy street, cinematic illustration',width:1024,height:1024});
+document.getElementById('ws-load').click();
+window.fixture.ready=true;
+</script></body></html>

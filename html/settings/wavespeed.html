@@ -1,0 +1,52 @@
+<!-- Added by Codex for the workspace owner, 2026-09-19. Aladdin Free Public License; see LICENSE. -->
+<div id="ch-tab-wavespeed">
+  <div class="st-chatu8-settings-section">
+    <h3>WaveSpeed / Civitai · 浏览器直连</h3>
+    <p>继续使用原插件的 LLM、世界书、人物预设与图片操作。这里配置最后一步的图片生成服务。</p>
+    <p id="ws-status" class="ws-status" role="status" aria-live="polite">无需服务端插件，直接填写 Key 并保存。</p>
+    <div class="ws-actions"><button type="button" id="ws-load" class="menu_button">读取配置</button><button type="button" id="ws-use" class="menu_button">使用 WaveSpeed</button><button type="button" id="ws-civitai-use" class="menu_button">使用 Civitai</button></div>
+    <p class="ws-hint">Key、任务记录保存在此浏览器，不会写入原版智绘姬设置。更换浏览器或清理网站数据后需重新填写 Key。</p>
+    <h4>WaveSpeed</h4>
+    <div class="st-chatu8-field"><label for="ws-key">WaveSpeed API Key</label><input id="ws-key" type="password" autocomplete="new-password" placeholder="留空保留原 Key；仅存入当前浏览器"></div>
+    <label class="ws-check"><input id="ws-clear-key" type="checkbox">清除已保存的 WaveSpeed Key</label>
+    <div class="st-chatu8-field"><label for="ws-model">模型 ID</label><input id="ws-model" list="ws-model-list" value="wavespeed-ai/z-image/turbo"><datalist id="ws-model-list"></datalist></div>
+    <div class="ws-actions"><button type="button" id="ws-models" class="menu_button">读取文生图模型 / 验证 Key</button></div>
+    <div class="st-chatu8-field"><label for="ws-params">模型参数 JSON</label><textarea id="ws-params" rows="5" spellcheck="false">{"size":"1024*1024"}</textarea></div>
+    <p class="ws-hint">参数以所选模型文档为准，不要填写 prompt。首版使用异步任务和图片 URL 输出；一次任务可以保存多张图片，原消息展示第一张。</p>
+    <details><summary>查看所选模型参数说明</summary><pre id="ws-schema" class="ws-code">读取模型列表后显示。</pre></details>
+    <div class="st-chatu8-field"><label for="ws-size-mode">原插件尺寸映射</label><select id="ws-size-mode"><option value="size">size：宽*高（默认）</option><option value="width_height">width 与 height</option><option value="none">不映射，仅使用 JSON 参数</option></select></div>
+    <div class="st-chatu8-field"><label for="ws-negative-field">负面提示词映射</label><select id="ws-negative-field"><option value="">不发送（默认）</option><option value="negative_prompt">negative_prompt（模型支持时启用）</option></select></div>
+    <h4>Civitai</h4>
+    <div class="st-chatu8-field"><label for="ws-civitai-key">Civitai API Key</label><input id="ws-civitai-key" type="password" autocomplete="new-password" placeholder="留空保留原 Key；仅存入当前浏览器"></div>
+    <label class="ws-check"><input id="ws-civitai-clear-key" type="checkbox">清除已保存的 Civitai Key</label>
+    <div class="st-chatu8-field"><label for="ws-civitai-model">Checkpoint AIR</label><input id="ws-civitai-model" value="urn:air:sdxl:checkpoint:civitai:101055@128078" spellcheck="false"></div>
+    <div class="st-chatu8-field"><label for="ws-civitai-params">Civitai 参数 JSON</label><textarea id="ws-civitai-params" rows="6" spellcheck="false">{"width":1024,"height":1024,"steps":25,"cfgScale":5,"scheduler":"eulerA","quantity":1}</textarea></div>
+    <p class="ws-hint">使用 Civitai v2 文生图工作流。填写支持平台在线生成的模型 AIR；LoRA 放在 additionalNetworks 中。负面词字段为 negativePrompt，尺寸自动对应原插件选择。省略 seed 则随机生成。</p>
+    <details><summary>LoRA 参数格式示例</summary><pre class="ws-code">"additionalNetworks": {
+  "urn:air:sdxl:lora:civitai:模型ID@版本ID": {"strength": 0.8}
+}</pre><p class="ws-hint">把这一项加入上面的 JSON 对象，并替换成真实的 LoRA AIR；LoRA 与主模型的基础架构须兼容。</p></details>
+    <div class="st-chatu8-field"><label for="ws-civitai-buzz">单次 Buzz 预估上限</label><input id="ws-civitai-buzz" type="number" min="1" max="100000" step="1" value="100"></div>
+    <p class="ws-hint">每次生成前先免费预估；超过上限或无法预估时不提交。预估和扣费有时间差，最终账单以 Civitai 为准。点击原插件生图按钮会在此范围内自动提交。</p>
+    <div class="st-chatu8-field"><label for="ws-civitai-preview">费用预估用提示词</label><input id="ws-civitai-preview" value="a landscape, illustration"></div>
+    <div class="ws-actions"><button type="button" id="ws-civitai-estimate" class="menu_button">保存配置并免费预估 / 验证 Key</button></div>
+    <details><summary>两种后端共用的固定提示词</summary>
+      <div class="st-chatu8-field"><label for="ws-prefix">前置提示词</label><textarea id="ws-prefix" rows="2"></textarea></div>
+      <div class="st-chatu8-field"><label for="ws-suffix">后置提示词</label><textarea id="ws-suffix" rows="2"></textarea></div>
+      <div class="st-chatu8-field"><label for="ws-negative">固定负面提示词</label><textarea id="ws-negative" rows="2"></textarea></div>
+      <p class="ws-hint">继续调用原插件的提示词替换、分角色解析和正面词拼接函数；不会套用其他后端的质量词。</p>
+    </details>
+    <div class="ws-actions"><button type="button" id="ws-save" class="menu_button">保存 WaveSpeed / Civitai 配置</button></div>
+  </div>
+  <div class="st-chatu8-settings-section">
+    <h3>任务与恢复</h3>
+    <p class="ws-hint">刷新后点击「查询任务」。已经提交的任务只查询原 ID；完成后可放回原插件缓存，再刷新消息显示。任务与图片先保存在当前浏览器，完成后沿用原插件缓存设置。清理网站数据前请备份图片。</p>
+    <div class="ws-actions"><button type="button" id="ws-jobs-refresh" class="menu_button">查询任务</button></div>
+    <div id="ws-jobs"><p class="ws-hint">尚未读取任务。</p></div>
+  </div>
+  <div class="st-chatu8-settings-section">
+    <h3>原有功能入口</h3>
+    <p>LLM 连接和上下文预设仍在「LLM」页；世界书选择、条目选择、角色绑定和触发测试仍在原插件的「发送数据」页。你的已有预设和世界书不用转换格式。</p>
+    <div class="ws-actions"><button type="button" id="ws-open-worldbook" class="menu_button">打开原世界书搭载</button><button type="button" id="ws-open-llm" class="menu_button">打开原 LLM 设置</button></div>
+    <p class="ws-hint">这两个后端目前接通文生图。参考图编辑、局部重绘和视频继续使用原项目对应后端，不能把那些请求直接交给文生图模型。</p>
+  </div>
+</div>

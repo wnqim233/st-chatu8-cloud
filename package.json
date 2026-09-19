@@ -1,0 +1,15 @@
+{
+  "name": "st-chatu8-cloud",
+  "version": "3.1.0-cloud.2",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "check": "node scripts/check.mjs",
+    "package": "python3 scripts/package.py",
+    "preview": "node scripts/preview.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,17 @@
+/* Added by Codex for the workspace owner, 2026-09-19. Aladdin Free Public License. */
+#ch-tab-wavespeed { line-height: 1.6; }
+#st-chatu8-settings #ch-tab-wavespeed .st-chatu8-field { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+#st-chatu8-settings #ch-tab-wavespeed .st-chatu8-field label { flex: none; width: auto; }
+#ch-tab-wavespeed input:not([type=checkbox]), #ch-tab-wavespeed textarea, #ch-tab-wavespeed select { width: 100%; min-width: 0; color: var(--st-chatu8-text-color, #ddd); background: var(--st-chatu8-input-bg, #1d1e25); border: 1px solid var(--st-chatu8-border-color, #666); padding: 9px 11px; border-radius: 7px; font: inherit; box-sizing: border-box; }
+#ch-tab-wavespeed textarea { resize: vertical; }
+#ch-tab-wavespeed .ws-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+#ch-tab-wavespeed .ws-actions .menu_button { width: auto; margin: 0; }
+#ch-tab-wavespeed .ws-hint { font-size: 12px; opacity: .8; overflow-wrap: anywhere; }
+#ch-tab-wavespeed .ws-status { padding: 12px; border-left: 3px solid var(--st-chatu8-accent-color, #b49eee); background: var(--st-chatu8-input-bg, #1d1e25); white-space: pre-wrap; overflow-wrap: anywhere; }
+#ch-tab-wavespeed .ws-status[data-error=true] { border-color: #e29d79; }
+#ch-tab-wavespeed .ws-check { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
+#ch-tab-wavespeed .ws-code { font: 12px/1.6 monospace; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow: auto; }
+#ch-tab-wavespeed .ws-job { border: 1px solid var(--st-chatu8-border-color, #555); border-radius: 10px; padding: 14px; margin-top: 12px; }
+#ch-tab-wavespeed .ws-job p { overflow-wrap: anywhere; }
+#ch-tab-wavespeed .ws-images { display: flex; gap: 10px; flex-wrap: wrap; }
+#ch-tab-wavespeed .ws-images img { max-width: 100%; max-height: 220px; border-radius: 8px; }

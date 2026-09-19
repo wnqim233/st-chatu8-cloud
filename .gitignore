@@ -1,0 +1,11 @@
+node_modules/
+dist/
+test-results/
+backups/
+.env
+*.log
+__pycache__/
+
+.agents/
+.codex/
+.env.*
