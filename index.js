@@ -87755,6 +87755,25 @@ function onExportSettingsClick() {
   URL.revokeObjectURL(url);
   alert("\u8BBE\u7F6E\u5DF2\u5BFC\u51FA\u3002");
 }
+// Keep browser-local credentials and the selected cloud backend when importing legacy settings.
+function mergeImportedSettings(current, imported) {
+  if (!imported || typeof imported !== "object" || Array.isArray(imported)) {
+    throw new Error("设置文件必须是 JSON 对象");
+  }
+  const { cloudStorageId, __proto__: ignoredPrototype, constructor: ignoredConstructor, prototype: ignoredProperty, ...values } = imported;
+  if (["wavespeed", "civitai"].includes(current.mode) && !["wavespeed", "civitai"].includes(values.mode)) {
+    values.mode = current.mode;
+  }
+  Object.assign(current, values);
+}
+async function refreshImportedSettings() {
+  await window.loadSilterTavernChatu8Settings();
+  updateGenerationModeHandlers();
+  const modal = $("#ch-settings-modal");
+  updateModeNavVisibility(modal);
+  const currentTab = modal.find(".st-chatu8-nav-link.active").data("tab");
+  modal.find(`.st-chatu8-nav-link[data-tab="${currentTab || "wavespeed"}"]`).trigger("click");
+}
 function onImportSettingsClick() {
   const input = document.createElement("input");
   input.type = "file";
@@ -87766,7 +87785,7 @@ function onImportSettingsClick() {
       reader.onload = async (e) => {
         try {
           const importedSettings = JSON.parse(e.target.result);
-          Object.assign(extension_settings72[extensionName], importedSettings);
+          mergeImportedSettings(extension_settings72[extensionName], importedSettings);
           saveSettingsDebounced45();
           try {
             await initJiuguanStorage();
@@ -87774,7 +87793,7 @@ function onImportSettingsClick() {
           } catch (error) {
             console.error("[Settings] \u91CD\u65B0\u52A0\u8F7D\u56FE\u7247\u7F13\u5B58\u5931\u8D25:", error);
           }
-          window.loadSilterTavernChatu8Settings();
+          await refreshImportedSettings();
           alert("\u8BBE\u7F6E\u5DF2\u5BFC\u5165\u3002");
         } catch (error) {
           alert("\u5BFC\u5165\u8BBE\u7F6E\u5931\u8D25\uFF0C\u6587\u4EF6\u683C\u5F0F\u65E0\u6548\u3002");
@@ -108762,7 +108781,7 @@ function updateModeNavVisibility(settingsModal) {
   MODE_NAV_TABS.forEach((tab) => {
     const $link = settingsModal.find(`.st-chatu8-nav-link[data-tab="${tab}"]`);
     if (!$link.length) return;
-    const visible = tab === currentMode2 || (tab === "wavespeed" && currentMode2 === "civitai");
+    const visible = tab === "wavespeed" || tab === currentMode2;
     $link.toggle(visible);
     if (!visible && $link.hasClass("active")) {
       activeTabHidden = true;
@@ -109258,7 +109277,7 @@ async function initUI({ check_update: check_update2 }) {
     }
     updateNovelaiOtherSiteVisibility();
   }
-  loadSettingsIntoUI();
+  await loadSettingsIntoUI();
   updateGenerationModeHandlers();
   initFab();
   const settingsModal = $("#ch-settings-modal");
@@ -109335,9 +109354,7 @@ async function initUI({ check_update: check_update2 }) {
   settingsModal.find(".st-chatu8-nav-link").on("click", function(e) {
     e.preventDefault();
     const tabId = $(this).data("tab");
-    if ($(this).hasClass("active")) {
-      return;
-    }
+    // Reconcile the panel even when its navigation link is already active.
     settingsModal.find(".st-chatu8-nav-link").removeClass("active");
     $(this).addClass("active");
     const tabContents = settingsModal.find(".st-chatu8-content > .st-chatu8-tab-content");
@@ -109363,7 +109380,7 @@ async function initUI({ check_update: check_update2 }) {
   });
   const lastTabId = settings2.lastTab || "main";
   const initialTabLink = settingsModal.find(`.st-chatu8-nav-link[data-tab="${lastTabId}"]`);
-  if (initialTabLink.length && !initialTabLink.hasClass("active")) {
+  if (initialTabLink.length) {
     settingsModal.find(".st-chatu8-nav-link").removeClass("active");
     initialTabLink.addClass("active");
     settingsModal.find(".st-chatu8-content > .st-chatu8-tab-content").removeClass("active");
@@ -110810,9 +110827,9 @@ if (typeof window !== "undefined" && typeof window.requestIdleCallback === "func
 window.imagesid = "";
 window.xiancheng = true;
 async function checkForUpdates2() {
-  window.chatu8LocalVersion = "3.1.0-cloud.2";
+  window.chatu8LocalVersion = "3.1.0-cloud.3";
   const forkVersionLabel = document.getElementById("ch-version-display");
-  if (forkVersionLabel) forkVersionLabel.textContent = "3.1.0 + WaveSpeed 0.1";
+  if (forkVersionLabel) forkVersionLabel.textContent = `v${window.chatu8LocalVersion}`;
   return;
   try {
     const localManifestResponse = await fetch(`${extensionFolderPath}/manifest.json?t=${(/* @__PURE__ */ new Date()).getTime()}`, { cache: "no-cache" });

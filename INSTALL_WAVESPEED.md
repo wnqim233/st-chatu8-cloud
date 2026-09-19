@@ -1,6 +1,6 @@
 # 安装智绘姬 · 云端独立版
 
-**当前版本 3.1.0-cloud.2 是普通酒馆前端扩展。无需安装服务端插件，无需修改 `enableServerPlugins`。** 浏览器直接调用 WaveSpeed / Civitai；世界书、LLM、人物预设、正文手势和图片操作复用原智绘姬代码。
+**当前版本 3.1.0-cloud.3 是普通酒馆前端扩展。无需安装服务端插件，无需修改 `enableServerPlugins`。** 浏览器直接调用 WaveSpeed / Civitai；世界书、LLM、人物预设、正文手势和图片操作复用原智绘姬代码。
 
 ## 用 Git 安装
 
@@ -57,3 +57,9 @@ Key、任务与下载结果保存在当前浏览器 IndexedDB，独立于原版�
 开发命令：`npm test`、`npm run check`、`npm run package`，不需要安装 npm 依赖。
 
 接口资料：[WaveSpeed 文档](https://wavespeed.ai/docs)、[Civitai v2 OpenAPI](https://orchestration.civitai.com/openapi/v2-consumers.json)、[Civitai 官方 SDK](https://github.com/civitai/civitai-app-starters/blob/main/packages/civitai-app-sdk/src/orchestrator/index.ts)。
+
+## 从 cloud.2 更新 / 导入旧配置后页面空白
+
+在酒馆的扩展管理中更新「智绘姬 · 云端独立版」，然后刷新页面；无需卸载、重置设置或再次导入。更新到 `3.1.0-cloud.3` 后重新打开 WaveSpeed / Civitai 页。
+
+此版修复菜单高亮与内容面板不同步，以及旧配置导入后未刷新生图模式的问题。云端设置入口始终保留；已选择 WaveSpeed / Civitai 时，导入旧后端配置会保留当前云端模式。世界书、LLM、人物和主题等配置仍沿用原版导入方式。浏览器内的 Key 和任务不会因导入其他安装的存储标识而切换；设置 JSON 本身不包含这两家的 Key。

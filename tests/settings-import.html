@@ -1,0 +1,86 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/style.css"></head><body>
+<script src="/node_modules/jquery/dist/jquery.min.js"></script>
+<script type="module">
+import { createBrowserApi } from '/wavespeed/browser.js';
+const source = await (await fetch('/index.js')).text();
+const fn = name => { const start = source.search(new RegExp(`(?:async )?function ${name}\\(`)); const end = source.indexOf('\n}', start); if(start<0||end<0)throw Error(name); return source.slice(start,end+2); };
+const settings = {mode:'novelai',lastTab:'wavespeed',videoChannel:'comfyui'};
+const results=[];
+const check=(name,pass)=>{results.push({name,pass:!!pass});if(!pass)throw Error(name);};
+const context = {
+  settings2:settings, extensionName:'st-chatu8-cloud', extension_settings72:{'st-chatu8-cloud':settings},
+  extensionFolderPath:'',
+  tabIds:JSON.parse(source.match(/var tabIds = (\[[^;]+\]);/)[1]),
+  MODE_NAV_TABS:JSON.parse(source.match(/var MODE_NAV_TABS = (\[[^;]+\]);/)[1]),
+  VIDEO_NAV_TABS:JSON.parse(source.match(/var VIDEO_NAV_TABS = (\[[^;]+\]);/)[1]),
+  saveSettingsDebounced45(){}, async initJiuguanStorage(){},
+  updateGenerationModeHandlers(){context.handlerMode=settings.mode;},
+  initHelpTipInteractions(){},injectHelpTips(){},initCollapsibleSections(){},
+  updateLogView(){},updateErrorStats(){},updateImageGenStats(){},refreshCharacterSettings(){},
+  renderAssetsList(){},refreshVideoAssetGenUI(){},refreshKnowledgeBaseSettings(){},
+};
+document.body.insertAdjacentHTML('beforeend',(await (await fetch('/settings.html')).text()).replaceAll('/scripts/extensions/third-party/st-chatu8/','/'));
+const names=['isThemeDark','applyTheme','getAboutPageContent','loadAllTabsContent','updateModeNavVisibility','mergeImportedSettings','refreshImportedSettings','onImportSettingsClick'];
+const disclaimer=source.slice(source.indexOf('var DISCLAIMER_CONTENT ='),source.indexOf('function getAboutPageContent()'));
+const api=Function(...Object.keys(context),disclaimer+names.map(fn).join('\n')+'\nreturn {'+names.join(',')+'};')(...Object.values(context));
+await api.loadAllTabsContent(document.querySelector('.st-chatu8-content'));
+const settingsModal=$('#ch-settings-modal');
+const navStart=source.indexOf('  settingsModal.find(".st-chatu8-nav-link").on("click", function(e) {');
+const navEnd=source.indexOf('  initPromptReplaceControls(settingsModal);',navStart);
+Function(...Object.keys(context),'settingsModal',source.slice(navStart,navEnd))(...Object.values(context),settingsModal);
+api.updateModeNavVisibility(settingsModal);
+settingsModal.css('display','grid');
+const click = id => settingsModal.find(`.st-chatu8-nav-link[data-tab="${id}"]`).trigger('click');
+click('wavespeed');
+window.regression={settings,api,context,source,fn,click,settingsModal,ready:true,
+state:()=>({nav:settingsModal.find('.st-chatu8-nav-link.active').data('tab'),panels:[...document.querySelectorAll('.st-chatu8-content > .st-chatu8-tab-content.active')].map(x=>x.id),waveVisible:document.querySelector('#ws-load').getBoundingClientRect().height>0,waveDisplay:getComputedStyle(document.querySelector('#st-chatu8-tab-wavespeed')).display})};
+try {
+  check('legacy mode keeps cloud settings accessible', settingsModal.find('[data-tab="wavespeed"]')[0].style.display !== 'none' && regression.state().waveVisible);
+  // Reproduce the reported selected-link / blank-panel mismatch, then click it again.
+  document.getElementById('st-chatu8-tab-wavespeed').classList.remove('active');
+  check('blank-panel state reproduced', !regression.state().waveVisible);
+  click('wavespeed');
+  check('clicking the selected link restores the panel', regression.state().waveVisible && regression.state().panels.length===1);
+  const browserApi=createBrowserApi({settings:()=>settings,saveSettings(){}});
+  await browserApi('/config',{wavespeedKey:'regression-fake-key',civitaiKey:'regression-fake-civitai-key'});
+  const localId=settings.cloudStorageId;
+  let complete;
+  window.alert=message=>complete(message);
+  window.loadSilterTavernChatu8Settings=async()=>{
+    // Other upstream forms depend on a live ST session; only the imported theme and mode are needed here.
+    await new Promise(resolve=>setTimeout(resolve,20));
+    document.getElementById('mode').value=settings.mode;
+    if(settings.themes)api.applyTheme(settings.themes[settings.theme_id]);
+  };
+  async function importFile(value){
+    const done=new Promise(resolve=>complete=resolve);
+    const oldClick=HTMLInputElement.prototype.click;
+    HTMLInputElement.prototype.click=function(){
+      if(this.type!=='file')return oldClick.call(this);
+      const data=new DataTransfer();data.items.add(new File([JSON.stringify(value)],'legacy-settings.json',{type:'application/json'}));
+      this.files=data.files;this.dispatchEvent(new Event('change'));
+    };
+    try{api.onImportSettingsClick();}finally{HTMLInputElement.prototype.click=oldClick;}
+    return await done;
+  }
+  const theme={'--st-chatu8-bg-primary':'#0f172a','--st-chatu8-bg-secondary':'#1e293b','--st-chatu8-text-primary':'#e2e8f0','--st-chatu8-accent-color':'#f59e0b'};
+  for(const provider of ['wavespeed','civitai']){
+    settings.mode=provider;
+    const imported={mode:'novelai',lastTab:'novelai',cloudStorageId:'foreign-browser-id',theme_id:'旧版深色',themes:{'旧版深色':theme},worldBookEnabled:'true',worldBookList:{测试世界书:'保留内容'},ai_system_prompt:'测试 LLM 预设'};
+    const message=await importFile(imported);
+    check(provider+': actual file import succeeds',message==='设置已导入。');
+    check(provider+': mode and handlers agree',settings.mode===provider&&context.handlerMode===provider&&document.getElementById('mode').value===provider);
+    check(provider+': selected page remains visible',regression.state().waveVisible&&regression.state().nav==='wavespeed');
+    check(provider+': local storage identity preserved',settings.cloudStorageId===localId);
+    check(provider+': worldbook and LLM settings retained',settings.worldBookList.测试世界书==='保留内容'&&settings.ai_system_prompt==='测试 LLM 预设');
+    click('llm');click('send_data');click('wavespeed');
+    check(provider+': return from original settings pages',regression.state().waveVisible&&regression.state().panels.length===1);
+  }
+  const config=await browserApi('/config');
+  check('both provider keys survive imports',config.hasWavespeedKey&&config.hasCivitaiKey);
+  const before=JSON.stringify(settings);
+  check('invalid settings rejected', (await importFile([])).includes('失败') && JSON.stringify(settings)===before);
+  window.regression.result={passed:true,results};
+}catch(error){window.regression.result={passed:false,results,error:error.stack};}
+
+</script></body></html>
