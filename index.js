@@ -87800,9 +87800,9 @@ function onImportSettingsClick() {
             console.error("[Settings] \u91CD\u65B0\u52A0\u8F7D\u56FE\u7247\u7F13\u5B58\u5931\u8D25:", error);
           }
           await refreshImportedSettings();
-          alert("\u8BBE\u7F6E\u5DF2\u5BFC\u5165\u3002");
+          alert(importedSettings.cloudImageConfig?.version === 2 ? "完整设置已导入（含 API Key）。请刷新页面后使用。" : "\u8BBE\u7F6E\u5DF2\u5BFC\u5165\u3002");
         } catch (error) {
-          alert("\u5BFC\u5165\u8BBE\u7F6E\u5931\u8D25\uFF0C\u6587\u4EF6\u683C\u5F0F\u65E0\u6548\u3002");
+          alert(`导入设置失败：${error.message || "文件格式无效"}。请修复后重新导入。`);
         }
       };
       reader.readAsText(file);
@@ -110833,7 +110833,7 @@ if (typeof window !== "undefined" && typeof window.requestIdleCallback === "func
 window.imagesid = "";
 window.xiancheng = true;
 async function checkForUpdates2() {
-  window.chatu8LocalVersion = "3.1.0-cloud.8";
+  window.chatu8LocalVersion = "3.1.0-cloud.9";
   const forkVersionLabel = document.getElementById("ch-version-display");
   if (forkVersionLabel) forkVersionLabel.textContent = `v${window.chatu8LocalVersion}`;
   return;

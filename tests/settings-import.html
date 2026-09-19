@@ -15,7 +15,7 @@ const context = {
   tabIds:JSON.parse(source.match(/var tabIds = (\[[^;]+\]);/)[1]),
   MODE_NAV_TABS:JSON.parse(source.match(/var MODE_NAV_TABS = (\[[^;]+\]);/)[1]),
   VIDEO_NAV_TABS:JSON.parse(source.match(/var VIDEO_NAV_TABS = (\[[^;]+\]);/)[1]),
-  getWaveSpeedAdapter:()=>createWaveSpeedAdapter({api:browserApi,settings:()=>settings,saveSettings(){}}),
+  getWaveSpeedAdapter:()=>createWaveSpeedAdapter({api:browserApi,settings:()=>settings,saveSettings(){},context:()=>globalThis.migrationContext || {}}),
   saveSettingsDebounced45(){}, async initJiuguanStorage(){},
   updateGenerationModeHandlers(){context.handlerMode=settings.mode;},
   initHelpTipInteractions(){},injectHelpTips(){},initCollapsibleSections(){},
@@ -66,6 +66,8 @@ try {
     try{api.onImportSettingsClick();}finally{HTMLInputElement.prototype.click=oldClick;}
     return await done;
   }
+  regression.importFile=importFile;
+  regression.cloudConfig=()=>browserApi('/config');
   const theme={'--st-chatu8-bg-primary':'#0f172a','--st-chatu8-bg-secondary':'#1e293b','--st-chatu8-text-primary':'#e2e8f0','--st-chatu8-accent-color':'#f59e0b'};
   for(const provider of ['wavespeed','civitai']){
     settings.mode=provider;

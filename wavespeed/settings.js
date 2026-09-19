@@ -21,7 +21,7 @@ export function loraSummary(params) {
 }
 
 export function createSettingsEditor({ api, deps, $, notify, onModeChanged }) {
-  let root, saved, editing, loading, saving;
+  let root, saved, editing, loading, saving, saveError = '';
   const dirty = new Set();
   const mode = () => deps.settings().mode;
   const changed = provider => dirty.has(provider) || dirty.has('shared');
@@ -33,17 +33,25 @@ export function createSettingsEditor({ api, deps, $, notify, onModeChanged }) {
       $(id).setAttribute('aria-pressed', String(editing === provider));
       $(id).textContent = names[provider] + (dirty.has(provider) ? ' · 未保存' : '');
     }
-    $('save').textContent = `保存并使用 ${names[editing]}`;
-    $('save-state').textContent = saving ? '正在保存…' : changed(editing) ? '有修改未保存' : `已保存${saved.savedAt ? ' · '+new Date(saved.savedAt).toLocaleTimeString() : ''} · 配置 #${saved.revision || 0}`;
+    $('save').textContent = '保存并使用';
+    const savedText = `已保存${saved.savedAt ? ' · '+new Date(saved.savedAt).toLocaleTimeString() : ''} · 配置 #${saved.revision || 0}`;
+    const status = provider => saving ? '正在保存…' : saveError || (changed(provider) ? '有修改未保存' : savedText);
+    $('save-state').textContent = status(editing);
     $('save-state').dataset.dirty = String(changed(editing));
     $('save').disabled = Boolean(saving || loading);
     $('form').disabled = Boolean(saving || loading);
+    for (const button of root.querySelectorAll('[data-ws-save]')) button.disabled = Boolean(saving || loading);
+    for (const item of root.querySelectorAll('[data-ws-save-state]')) {
+      item.textContent = status(item.dataset.wsSaveState);
+      item.dataset.error = String(Boolean(saveError));
+    }
     const cfg = providerConfig(saved, editing);
     $('saved-summary').textContent = `${names[editing]} · ${parameterSummary(cfg.imageParams)}\nLoRA：\n${loraSummary(cfg.imageParams)}`;
     $('saved-params').textContent = JSON.stringify({ model: cfg.imageModel, params: cfg.imageParams }, null, 2);
     $('dimension-hint').textContent = $('dimension-source').value === 'json' ? '按 JSON 时，正文按钮的宽高不会覆盖参数。' : '正文按钮带有宽高时会覆盖 JSON；没有宽高时仍用 JSON。';
   }
   function fill(config, provider) {
+    saveError = '';
     for (const group of provider ? [provider, 'shared'] : ['civitai', 'wavespeed', 'shared']) {
       for (const [id, key] of Object.entries(fields[group])) $(id).value = config[key] ?? (key === 'dimensionSource' ? 'json' : '');
       dirty.delete(group);
@@ -94,7 +102,10 @@ export function createSettingsEditor({ api, deps, $, notify, onModeChanged }) {
     if (loading) await loading;
     if (!saved) throw new Error('尚未成功读取配置，请先重新读取。');
     if (saving) { await saving; if (!changed(provider)) { if (use) activate(provider); state(); return saved; } }
-    const input = payload(provider); // Only the selected backend is parsed/saved.
+    saveError = '';
+    let input;
+    try { input = payload(provider); } // Only the selected backend is parsed/saved.
+    catch (error) { saveError = error.message; dirty.add(provider); state(); throw error; }
     saving = (async () => {
       const written = await api('/config', input);
       const readback = await api('/config');
@@ -106,13 +117,13 @@ export function createSettingsEditor({ api, deps, $, notify, onModeChanged }) {
     })();
     state();
     try { return await saving; }
-    catch (error) { dirty.add(provider); notify(error.message, true); throw error; }
+    catch (error) { saveError = error.message; dirty.add(provider); notify(error.message, true); throw error; }
     finally { saving = undefined; state(); }
   }
   function mount() {
     const next = $('form'); if (!next || root === next) return;
-    root = next; saved = undefined; dirty.clear(); editing = names[mode()] ? mode() : 'civitai';
-    const edit = event => { if (!saved || event.target.id === 'ws-civitai-preview') return; dirty.add(event.target.closest('[data-ws-provider]')?.dataset.wsProvider || 'shared'); state(); };
+    root = next; saved = undefined; saveError = ''; dirty.clear(); editing = names[mode()] ? mode() : 'civitai';
+    const edit = event => { if (!saved || event.target.id === 'ws-civitai-preview') return; saveError = ''; dirty.add(event.target.closest('[data-ws-provider]')?.dataset.wsProvider || 'shared'); state(); };
     root.addEventListener('input', edit); root.addEventListener('change', edit);
     const actions = { save: () => save(), load: () => {
       if (dirty.size && !globalThis.confirm('重新读取会放弃当前未保存的修改，是否继续？')) return;
@@ -120,6 +131,7 @@ export function createSettingsEditor({ api, deps, $, notify, onModeChanged }) {
     }, use: () => { editing = 'wavespeed'; state(); }, 'civitai-use': () => { editing = 'civitai'; state(); },
     format: () => format('wavespeed'), 'civitai-format': () => format('civitai') };
     for (const [id, action] of Object.entries(actions)) $(id).addEventListener('click', () => Promise.resolve().then(action).catch(error => notify(error.message, true)));
+    for (const button of root.querySelectorAll('[data-ws-save]')) button.addEventListener('click', () => save(button.dataset.wsSave).catch(error => notify(error.message, true)));
     void load().catch(error => { notify(error.message, true); $('save-state').textContent = '读取失败，请重新读取'; });
   }
   function format(provider) { $(paramsId(provider)).value = JSON.stringify(parse(provider), null, 2); dirty.add(provider); state(); }

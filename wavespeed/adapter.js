@@ -8,6 +8,7 @@ import { ACTIVE, queuedJobs } from '../shared/jobs.js';
 import { createSettingsEditor, parameterSummary, loraSummary } from './settings.js';
 import { workflowBody } from '../shared/civitai.js';
 import { portableConfig } from '../shared/config.js';
+import { validatePrivateBackup } from './migration.js';
 
 export function createWaveSpeedAdapter(deps) {
   const api = deps.api || createBrowserApi(deps);
@@ -270,6 +271,11 @@ export function createWaveSpeedAdapter(deps) {
   async function exportConfig() { return editor.exportConfig(); }
   async function importConfig(backup) {
     if (backup === undefined) return;
+    if (backup?.version === 2) {
+      const prepared = validatePrivateBackup(backup);
+      editor.imported(await api('/config', prepared.config));
+      return;
+    }
     if (!backup || backup.version !== 1) throw new Error('不支持的云端生图配置版本。');
     const config = await api('/config', portableConfig(backup.config));
     editor.imported(config);

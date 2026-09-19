@@ -18,7 +18,7 @@
 
 #ch-tab-wavespeed [hidden] { display: none !important; }
 #ch-tab-wavespeed #ws-form { border: 0; padding: 0; margin: 0; min-width: 0; }
-#ch-tab-wavespeed .ws-toolbar { position: sticky; top: 0; z-index: 5; padding: 12px 16px; margin-bottom: 16px; background: var(--st-chatu8-panel-bg, #182238); border: 1px solid var(--st-chatu8-border-color, #43506a); border-radius: 10px; box-shadow: 0 4px 12px #0003; }
+#ch-tab-wavespeed .ws-toolbar { position: static; padding: 12px 16px; margin-bottom: 16px; background: var(--st-chatu8-panel-bg, #182238); border: 1px solid var(--st-chatu8-border-color, #43506a); border-radius: 10px; }
 #ch-tab-wavespeed .ws-heading, #ch-tab-wavespeed .ws-savebar { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
 #ch-tab-wavespeed .ws-heading h3 { margin: 0; }
 #ch-tab-wavespeed .ws-badge { font-size: 13px; padding: 3px 9px; border: 1px solid #66748a; border-radius: 20px; }
@@ -39,5 +39,7 @@
 
 #ch-tab-wavespeed .ws-tabs button[aria-pressed=false] { background: transparent; color: inherit; border: 1px solid var(--st-chatu8-border-color, #64718a); box-shadow: none; }
 #ch-tab-wavespeed .menu_button { min-height: 40px; padding: 8px 12px; border: 1px solid var(--st-chatu8-border-color, #64718a); border-radius: 8px; background: var(--st-chatu8-input-bg, #253149); color: var(--st-chatu8-text-color, #eee); font: inherit; cursor: pointer; }
-#ch-tab-wavespeed #ws-save { background: var(--st-chatu8-accent-color, #d17b0f); color: #fff; font-weight: 600; }
+#ch-tab-wavespeed #ws-save, #ch-tab-wavespeed .ws-save-inline { background: var(--st-chatu8-accent-color, #d17b0f); color: #fff; font-weight: 600; }
+#ch-tab-wavespeed [data-ws-save-state] { overflow-wrap: anywhere; min-height: 1.6em; }
+#ch-tab-wavespeed [data-ws-save-state][data-error=true] { color: #ffc66e; }
 #ch-tab-wavespeed button:disabled { opacity: .6; cursor: wait; }

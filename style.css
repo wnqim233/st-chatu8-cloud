@@ -82,3 +82,27 @@
     opacity: 0.8;
     font-weight: 600;
 }
+/* cloud.9: compact mobile chrome; the form scrolls without an overlay toolbar. */
+@media (max-width: 768px) {
+  #st-chatu8-settings .st-chatu8-modal-content { height: 90dvh; max-height: 90dvh; }
+  #st-chatu8-settings .st-chatu8-modal-header { padding: 10px 12px; gap: 10px; flex-shrink: 0; }
+  #st-chatu8-settings .st-chatu8-modal-header > div { min-width: 0; gap: 8px !important; }
+  #st-chatu8-settings .st-chatu8-modal-header h2 { font-size: 17px; line-height: 1.35; overflow-wrap: anywhere; }
+  #st-chatu8-settings #st-chatu8-ai-trigger { width: 30px; height: 30px; flex-shrink: 0; }
+  #st-chatu8-settings .st-chatu8-modal-close { flex-shrink: 0; padding: 6px; }
+  #st-chatu8-settings .st-chatu8-settings-layout, #st-chatu8-settings .st-chatu8-content { min-height: 0; }
+  #st-chatu8-settings .st-chatu8-sidebar-header { margin-bottom: 4px; }
+  #st-chatu8-settings .st-chatu8-sidebar-btn { min-height: 36px; padding: 6px; }
+  #st-chatu8-settings .st-chatu8-nav { padding-bottom: 0; }
+  #st-chatu8-settings .st-chatu8-nav-link { font-size: 14px; padding: 7px 10px; }
+  #st-chatu8-settings .st-chatu8-content { padding: 10px; }
+  #st-chatu8-settings #ch-tab-wavespeed { font-size: 15px; }
+  #st-chatu8-settings #ch-tab-wavespeed .ws-toolbar { padding: 10px; margin-bottom: 12px; }
+  #st-chatu8-settings #ch-tab-wavespeed .ws-heading h3 { font-size: 17px; margin: 0; }
+  #st-chatu8-settings #ch-tab-wavespeed .ws-savebar { flex-direction: column; align-items: stretch; gap: 6px; }
+  #st-chatu8-settings #ch-tab-wavespeed .ws-savebar > button { flex: none; }
+  #st-chatu8-settings #ch-tab-wavespeed .st-chatu8-settings-section { padding: 10px; }
+  #st-chatu8-settings #ch-tab-wavespeed .ws-actions { gap: 6px; }
+  #st-chatu8-settings #ch-tab-wavespeed .menu_button { font-size: 14px; padding: 8px 10px; }
+  #st-chatu8-settings #ch-tab-wavespeed textarea[id$=params] { min-height: 220px; max-height: 55dvh; }
+}
