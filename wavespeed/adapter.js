@@ -171,8 +171,8 @@ export function createWaveSpeedAdapter(deps) {
   async function estimate() {
     await editor.save('civitai', { use: false });
     const result = await api('/civitai/estimate', { prompt: $('civitai-preview').value });
-    $('civitai-cost').textContent = JSON.stringify({ payment: result.payment, cost: result.cost, transactions: result.transactions ?? '平台未返回交易明细' }, null, 2);
-    notify(`Civitai 预估 ${result.estimatedBuzz} Buzz（${civitaiPaymentLabel(result.civitaiCurrency)}），当前上限 ${result.maxBuzz} Buzz。${result.insufficientBuzz ? '所选币种余额不足，将阻止生成。' : result.withinLimit ? '在上限内。' : '超过上限，将阻止生成。'}${result.cost?.variable ? '这是可变费用的预扣上限，平台结算后可能退差额。' : ''}本次仅预估，没有提交付费任务。`);
+    $('civitai-cost').textContent = JSON.stringify({ payment: result.payment, requestedTips: result.requestedTips, cost: result.cost, transactions: result.transactions ?? '平台未返回交易明细' }, null, 2);
+    notify(`Civitai 预估 ${result.estimatedBuzz} Buzz（${civitaiPaymentLabel(result.civitaiCurrency)}），当前上限 ${result.maxBuzz} Buzz。${result.cost?.tips ? 'Creator Tip：0，Civitai Tip：0。' : '已要求两项小费为 0；平台未返回小费明细。'}${result.insufficientBuzz ? '所选币种余额不足，将阻止生成。' : result.withinLimit ? '在上限内。' : '超过上限，将阻止生成。'}${result.cost?.variable ? '这是可变费用的预扣上限，平台结算后可能退差额。' : ''}本次仅预估，没有提交付费任务。`);
   }
   function schema() { $('schema').textContent = JSON.stringify(models.find(m => m.id === $('model').value)?.schema || '请先读取模型列表，或查看所选模型文档。', null, 2); }
   async function loadModels() {
@@ -215,6 +215,10 @@ export function createWaveSpeedAdapter(deps) {
       card.append(node('p', `${parameterSummary(job.params)} · 配置 #${job.configRevision || 0}（入队时）`, 'ws-hint'));
       const actual = node('details'); actual.dataset.detailKey = `params:${job.id}`;
       const payload = job.provider === 'civitai' ? (job.civitaiCurrency ? workflowBody(job) : { input: workflowBody(job).steps[0].input, payment: '旧任务未记录支付设置，请在平台核对' }) : { ...job.params, prompt: job.prompt };
+      if (job.provider === 'civitai' && job.civitaiCurrency && !job.requestedTips && job.status !== 'queued') {
+        delete payload.tips;
+        payload.tipsNote = '旧任务未记录小费设置，请以平台账单为准';
+      }
       actual.append(node('summary', job.status === 'queued' ? '查看入队参数与 LoRA（待提交）' : '查看实际请求参数与 LoRA'), node('pre', loraSummary(job.params), 'ws-code'), node('pre', JSON.stringify(payload, null, 2), 'ws-code'));
       card.append(actual);
       const details = node('details'); details.dataset.detailKey = `prompt:${job.id}`; details.append(node('summary', '查看实际绘图提示词'), node('pre', job.prompt, 'ws-code')); card.append(details);

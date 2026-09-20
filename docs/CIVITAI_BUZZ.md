@@ -1,5 +1,9 @@
 # Buzz 选择与 NSFW 换币
 
+cloud.11 起，所有新提交的报价和生成请求都显式传入 `"tips": {"creators": 0, "civitai": 0}`，关闭 Creator Tip 和 Civitai Tip。无需更改参数 JSON。若平台报价返回非零或格式无效的小费，插件停止付费提交；若平台没有返回小费明细，界面会明确显示未返回，不将其说成已确认零小费。
+
+官方 [OpenAPI](https://orchestration.civitai.com/openapi/v2-consumers.json) 的 `WorkflowTips` 将这两个字段定义为 0 到 2 的小费比例，允许设为 0；响应 `WorkflowCostTips` 才是实际小费 Buzz 数额。接口没有注明“小费默认固定为 9”。基础生成费 `cost.base` 和资源授权费 `cost.fees` 不属于可选小费，仍需支付；关闭小费不代表整张图片免费。修改不能退回历史小费，已提交的工作流不受影响。
+
 cloud.10 新任务默认只使用黄 Buzz，提前声明允许成熟内容；所有币种选择都显式使用 `upgradeMode: manual`。这能避免客户端让平台自动从蓝／绿升级为黄币，但不能保证某个模型始终只收 9 Buzz，也不能证明或退回历史重复扣款。
 
 在「云端生图 → Civitai → 使用哪种 Buzz？」选择并保存：

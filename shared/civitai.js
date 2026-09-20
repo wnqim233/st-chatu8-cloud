@@ -22,6 +22,8 @@ export function workflowBody(job, estimate = false) {
   }
   return {
     tags: ['st-chatu8'], ...civitaiPayment(job.civitaiCurrency),
+    // Explicitly opt out of both optional tips; these are rates, not Buzz amounts.
+    tips: { creators: 0, civitai: 0 },
     // Estimates and paid requests must have separate idempotency identities.
     ...(!estimate ? { externalId: `chatu8-${job.id}` } : {}),
     steps: [{ $type: krea2 ? 'imageGen' : 'textToImage', name: 'image', timeout: '00:10:00', retries: 0, input }],
@@ -65,8 +67,12 @@ export const withCivitai = Base => class CivitaiService extends Base {
     }, 20000);
     const total = response?.cost?.total;
     if (!Number.isFinite(total) || total < 0) throw new AppError('Civitai 未返回有效的 Buzz 预估；未提交付费任务。', 502);
+    const tips = response.cost.tips;
+    if (tips != null && (!plainObject(tips) || tips.creators !== 0 || tips.civitai !== 0)) {
+      throw new AppError('已要求 Creator Tip 和 Civitai Tip 均为 0，但平台报价仍包含非零或无效的小费，已阻止付费提交。请核对平台报价。', 502);
+    }
     return { estimatedBuzz: total, maxBuzz: config.civitaiMaxBuzz, withinLimit: total <= config.civitaiMaxBuzz,
-      civitaiCurrency, payment: civitaiPayment(civitaiCurrency), cost: response.cost,
+      civitaiCurrency, payment: civitaiPayment(civitaiCurrency), requestedTips: { creators: 0, civitai: 0 }, cost: response.cost,
       transactions: response.transactions, insufficientBuzz: response.transactions?.insufficientBuzz === true };
   }
 
@@ -76,7 +82,7 @@ export const withCivitai = Base => class CivitaiService extends Base {
     const estimate = await this.estimate(job, config);
     if (!estimate.withinLimit) throw new AppError(`Civitai 预估 ${estimate.estimatedBuzz} Buzz，超过已设置的 ${estimate.maxBuzz} Buzz 上限，未提交付费任务。`);
     if (estimate.insufficientBuzz) throw new AppError(`Civitai ${civitaiPaymentLabel(job.civitaiCurrency)}余额不足，未提交付费任务，也不会改扣其他币种。`);
-    return { estimatedBuzz: estimate.estimatedBuzz, buzzEstimate: { cost: estimate.cost, transactions: estimate.transactions } };
+    return { estimatedBuzz: estimate.estimatedBuzz, requestedTips: estimate.requestedTips, buzzEstimate: { cost: estimate.cost, transactions: estimate.transactions } };
   }
 
   predictionDetails(result) {

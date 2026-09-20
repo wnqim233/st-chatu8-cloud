@@ -34,6 +34,9 @@ test('Civitai v2 estimate → submit → resume → image save, without duplicat
   assert.equal(a.estimatedBuzz, 12); assert.equal(a.provider, 'civitai');
   assert.equal(estimateBody.externalId, undefined); assert.equal(paidBody.externalId, 'chatu8-civitai-request-0001');
   assert.deepEqual(estimateBody.steps, paidBody.steps); assert.equal(paidBody.steps[0].$type, 'textToImage');
+  assert.deepEqual(estimateBody.tips, { creators: 0, civitai: 0 });
+  assert.deepEqual(paidBody.tips, estimateBody.tips);
+  assert.deepEqual(a.requestedTips, paidBody.tips);
   assert.ok(Number.isInteger(paidBody.steps[0].input.seed));
   time = 5000;
   const job = await service.refresh(a.id, config);
@@ -123,6 +126,8 @@ test('Krea 2 uses imageGen/comfy with a custom diffusion AIR for both estimate a
   assert.equal(result.taskId, 'krea-workflow'); assert.equal(bodies.length, 2);
   assert.equal(bodies[0].externalId, undefined); assert.ok(bodies[1].externalId);
   assert.deepEqual(bodies[0].steps, bodies[1].steps);
+  assert.deepEqual(bodies[0].tips, { creators: 0, civitai: 0 });
+  assert.deepEqual(bodies[1].tips, bodies[0].tips);
   const step = bodies[1].steps[0]; assert.equal(step.$type, 'imageGen');
   assert.deepEqual(step.input, { width: 1024, height: 1024, steps: 8, cfgScale: 1, quantity: 1, sampler: 'euler', scheduler: 'beta', engine: 'comfy', ecosystem: 'krea2', model: 'turbo', operation: 'createImage', diffusionModel: model, seed: step.input.seed, prompt: 'rainy street' });
   assert.ok(Number.isInteger(step.input.seed));
@@ -159,10 +164,36 @@ test('all four Buzz choices use identical explicit payment fields for estimates 
       assert.deepEqual(call.body.currencies, currency === 'blue_green' ? ['blue', 'green'] : [currency]);
       assert.equal(call.body.allowMatureContent, currency === 'yellow');
       assert.equal(call.body.upgradeMode, 'manual'); assert.equal(call.body.ephemeral, undefined);
+      assert.deepEqual(call.body.tips, { creators: 0, civitai: 0 });
     }
     assert.equal(job.buzzEstimate.cost.variable, true); assert.deepEqual(job.buzzEstimate.cost.fees, { lora: 2 });
     assert.equal((await db.job(job.id)).buzzEstimate.transactions.list[0].amount, 9);
   }
+});
+
+test('nonzero or malformed quoted tips stop the paid request, including when within budget', async t => {
+  for (const tips of [{ creators: 9, civitai: 0 }, { creators: 0, civitai: 9 }, { creators: 9, civitai: 9 }, { creators: '0', civitai: 0 }, {}, []]) {
+    const { db } = await setup(t); let calls = 0;
+    const service = new CivitaiService(db, { fetcher: async url => {
+      calls++; assert.ok(url.includes('whatif'));
+      return json({ cost: { total: 27, tips } });
+    } });
+    await assert.rejects(service.submit(input(), config), /小费/);
+    assert.equal(calls, 1); assert.deepEqual(await db.jobs(), []);
+  }
+});
+
+test('zero tips preserve paid base cost and licensing fees without claiming generation is free', async t => {
+  const { db } = await setup(t); const bodies = [];
+  const cost = { total: 12, base: 9, tips: { creators: 0, civitai: 0 }, fees: { lora: 3 } };
+  const service = new CivitaiService(db, { fetcher: async (url, opts) => {
+    bodies.push(JSON.parse(opts.body));
+    return json(url.includes('whatif') ? { cost } : { id: 'no-tips', status: 'scheduled', cost });
+  } });
+  const job = await service.submit(input(), config);
+  assert.equal(bodies.length, 2); assert.equal(job.estimatedBuzz, 12);
+  assert.deepEqual(job.buzzCost, cost); assert.deepEqual(job.buzzEstimate.cost, cost);
+  assert.deepEqual((await db.job(job.id)).requestedTips, { creators: 0, civitai: 0 });
 });
 
 test('insufficient selected Buzz prevents paid POST instead of falling back to another currency', async t => {

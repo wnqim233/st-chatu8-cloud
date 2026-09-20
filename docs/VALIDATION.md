@@ -1,5 +1,13 @@
 # 验证记录
 
+## cloud.11 关闭可选小费（2026-09-20）
+
+- 在线核对官方 OpenAPI：`WorkflowTips.creators` 与 `WorkflowTips.civitai` 均允许为 0，字段表示比例；`WorkflowCostTips` 返回实际小费 Buzz。
+- `npm test`：47 项通过。验证 Krea 2、SDXL 及四种币种的报价／生成都传零小费，非零或无效小费报价阻止付费请求，基础费和授权费仍保留，小费请求设置写入任务记录。
+- `npm run check`：23 个 JavaScript 文件语法、HTML ID、上游及复用模块指纹通过。
+- `node scripts/buzz-smoke.mjs`：Qt WebEngine 中四种币种的新请求均带 `tips: {creators: 0, civitai: 0}`，零小费报价显示、设置刷新恢复和桌面／手机宽度检查通过。接口为模拟数据，无真实付费请求。
+- 未读取用户账单、未实测平台结算，不认定历史 9 Buzz 来自小费。更新不修改已提交的工作流。
+
 ## cloud.10 Buzz 币种与自动升级限制（2026-09-20）
 
 - `npm test`：45 项测试通过。新增四种币种的报价／实际提交一致性、余额不足拦截、币种配置校验与导出、队列重启后保留原币种、扣留图片不升级重提、平台交易明细持久化检查。

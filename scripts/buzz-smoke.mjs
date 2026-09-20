@@ -29,11 +29,16 @@ try {
     const body=result.paid.at(-1).body;
     assert.deepEqual(body.currencies,currency==='blue_green'?['blue','green']:[currency]);
     assert.equal(body.allowMatureContent,currency==='yellow');assert.equal(body.upgradeMode,'manual');
+    assert.deepEqual(body.tips,{creators:0,civitai:0});
     assert.equal((await evaluate('fixture.config()')).civitaiCurrency,currency);
     records.push({currency,body});
   }
   await evaluate("document.querySelector('#ws-civitai-panel details').open=true;document.getElementById('ws-civitai-estimate').click()");
   await until("document.getElementById('ws-civitai-cost').textContent",s=>s.includes('blue')&&s.includes('manual'));
+  const quote=JSON.parse(await evaluate("document.getElementById('ws-civitai-cost').textContent"));
+  assert.deepEqual(quote.requestedTips,{creators:0,civitai:0});
+  assert.deepEqual(quote.cost.tips,quote.requestedTips);
+  assert.equal(await evaluate("document.getElementById('ws-status').textContent.includes('Creator Tip：0，Civitai Tip：0')"),true);
   await call('Page.reload',{ignoreCache:true});
   await until("globalThis.fixture?.ready && !document.getElementById('ws-form').disabled",Boolean);
   assert.equal(await evaluate("document.getElementById('ws-civitai-currency').value"),'blue_green');
@@ -45,5 +50,5 @@ try {
     const shot=await call('Page.captureScreenshot');await fs.writeFile(new URL(`buzz-${name}.png`,root),Buffer.from(shot.data,'base64'));
   }
   await fs.writeFile(new URL('result.json',root),JSON.stringify({passed:true,records,reloadedCurrency:(await evaluate('fixture.config()')).civitaiCurrency},null,2));
-  console.log('PASS: all four Buzz selectors → autosave → actual mock workflow; estimate detail, IndexedDB reload, desktop/mobile layout. Mock providers only.');
+  console.log('PASS: all four Buzz selectors → autosave → actual mock workflow with both tips zero; zero-tip estimate display, IndexedDB reload, desktop/mobile layout. Mock providers only.');
 } finally { socket.close(); }

@@ -15,7 +15,7 @@ const json = body => new Response(JSON.stringify(body));
 const fetcher = async (url, opts = {}) => {
   if (url.includes('orchestration.civitai.com')) {
     const state = load();
-    if (url.includes('whatif')) return json({cost:{total:1}});
+    if (url.includes('whatif')) return json({cost:{base:1,total:1,tips:{creators:0,civitai:0}}});
     if (opts.method === 'POST') { const body=JSON.parse(opts.body); const id='civitai-paid-'+(state.paid.length+1); state.paid.push({id,body});save(state);return json({id,status:'scheduled'}); }
     return json({id:url.split('/').pop(),status:'succeeded',steps:[{output:{images:[{available:true,url:'https://images.example/fixture.png'}]}}]});
   }
