@@ -7,7 +7,7 @@ import { createBrowserApi } from './browser.js';
 import { ACTIVE, queuedJobs } from '../shared/jobs.js';
 import { createSettingsEditor, parameterSummary, loraSummary } from './settings.js';
 import { workflowBody } from '../shared/civitai.js';
-import { portableConfig } from '../shared/config.js';
+import { portableConfig, civitaiPaymentLabel } from '../shared/config.js';
 import { validatePrivateBackup } from './migration.js';
 
 export function createWaveSpeedAdapter(deps) {
@@ -171,7 +171,8 @@ export function createWaveSpeedAdapter(deps) {
   async function estimate() {
     await editor.save('civitai', { use: false });
     const result = await api('/civitai/estimate', { prompt: $('civitai-preview').value });
-    notify(`Civitai 预估 ${result.estimatedBuzz} Buzz，当前上限 ${result.maxBuzz} Buzz。${result.withinLimit ? '在上限内。' : '超过上限，将阻止生成。'}本次仅预估，没有提交付费任务。`);
+    $('civitai-cost').textContent = JSON.stringify({ payment: result.payment, cost: result.cost, transactions: result.transactions ?? '平台未返回交易明细' }, null, 2);
+    notify(`Civitai 预估 ${result.estimatedBuzz} Buzz（${civitaiPaymentLabel(result.civitaiCurrency)}），当前上限 ${result.maxBuzz} Buzz。${result.insufficientBuzz ? '所选币种余额不足，将阻止生成。' : result.withinLimit ? '在上限内。' : '超过上限，将阻止生成。'}${result.cost?.variable ? '这是可变费用的预扣上限，平台结算后可能退差额。' : ''}本次仅预估，没有提交付费任务。`);
   }
   function schema() { $('schema').textContent = JSON.stringify(models.find(m => m.id === $('model').value)?.schema || '请先读取模型列表，或查看所选模型文档。', null, 2); }
   async function loadModels() {
@@ -203,10 +204,17 @@ export function createWaveSpeedAdapter(deps) {
       card.append(node('strong', job.status === 'queued' ? `排队中 · 第 ${waiting.findIndex(j => j.id === job.id) + 1} 位` : LABELS[job.status] || job.status), node('p', `${new Date(job.createdAt).toLocaleString()} · ${job.model}`, 'ws-hint'));
       if (job.taskId) card.append(node('p', `任务 ID：${job.taskId}`, 'ws-hint'));
       if (job.estimatedBuzz !== undefined) card.append(node('p', `Civitai 提交时预估：${job.estimatedBuzz} Buzz`, 'ws-hint'));
+      if (job.provider === 'civitai') {
+        card.append(node('p', `支付：${civitaiPaymentLabel(job.civitaiCurrency)}${job.civitaiCurrency ? ' · 禁止自动升级扣费' : '（以平台原任务为准）'}`, 'ws-hint'));
+        const billing = node('details'); billing.dataset.detailKey = `billing:${job.id}`;
+        billing.append(node('summary', '查看 Buzz 报价与平台交易明细'), node('pre', JSON.stringify({ estimate: job.buzzEstimate, latestCost: job.buzzCost, transactions: job.buzzTransactions ?? '平台尚未返回交易明细' }, null, 2), 'ws-code'));
+        card.append(billing);
+      }
       if (job.error) card.append(node('p', job.error, 'ws-status'));
+      if (job.warning && job.warning !== job.error) card.append(node('p', job.warning, 'ws-status'));
       card.append(node('p', `${parameterSummary(job.params)} · 配置 #${job.configRevision || 0}（入队时）`, 'ws-hint'));
       const actual = node('details'); actual.dataset.detailKey = `params:${job.id}`;
-      const payload = job.provider === 'civitai' ? workflowBody(job).steps[0].input : { ...job.params, prompt: job.prompt };
+      const payload = job.provider === 'civitai' ? (job.civitaiCurrency ? workflowBody(job) : { input: workflowBody(job).steps[0].input, payment: '旧任务未记录支付设置，请在平台核对' }) : { ...job.params, prompt: job.prompt };
       actual.append(node('summary', job.status === 'queued' ? '查看入队参数与 LoRA（待提交）' : '查看实际请求参数与 LoRA'), node('pre', loraSummary(job.params), 'ws-code'), node('pre', JSON.stringify(payload, null, 2), 'ws-code'));
       card.append(actual);
       const details = node('details'); details.dataset.detailKey = `prompt:${job.id}`; details.append(node('summary', '查看实际绘图提示词'), node('pre', job.prompt, 'ws-code')); card.append(details);

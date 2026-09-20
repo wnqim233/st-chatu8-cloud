@@ -50,6 +50,7 @@ export class WaveSpeedService {
     return validateImage(input.model ?? config.imageModel, input.params ?? config.imageParams);
   }
   async beforeSubmit() { return {}; }
+  predictionDetails() { return {}; }
   async submitPrediction(job, config) {
     return prediction(await jsonRequest(this.fetcher, `${API}/${job.model}`, {
       method: 'POST', headers: authHeaders(config.wavespeedKey), body: JSON.stringify({ ...job.params, prompt: job.prompt }),
@@ -64,7 +65,8 @@ export class WaveSpeedService {
     if (!plainObject(input) || !/^[a-zA-Z0-9-]{16,80}$/.test(input.id)) throw new AppError('任务标识无效。');
     const prompt = text(input.prompt, '绘图提示词', 16000, true);
     const source = validateSource(input.source);
-    const { model, params } = this.options(input, config);
+    const options = this.options(input, config);
+    const { model, params } = options;
     return this.store.exclusive('submit', async () => {
       const jobs = await this.store.jobs();
       const existing = jobs.find(j => j.id === input.id);
@@ -72,14 +74,14 @@ export class WaveSpeedService {
         if ((existing.provider || 'wavespeed') !== this.provider) throw new AppError('任务 ID 已被另一个后端使用。');
         return existing;
       }
-      const unfinished = jobs.find(j => (j.provider || 'wavespeed') === this.provider && j.prompt === prompt && j.model === model && JSON.stringify(j.params) === JSON.stringify(params) && j.source.chatId === source.chatId && (ACTIVE.has(j.status) || j.status === 'queued'));
+      const unfinished = jobs.find(j => (j.provider || 'wavespeed') === this.provider && j.prompt === prompt && j.model === model && j.civitaiCurrency === options.civitaiCurrency && JSON.stringify(j.params) === JSON.stringify(params) && j.source.chatId === source.chatId && (ACTIVE.has(j.status) || j.status === 'queued'));
       if (unfinished) return unfinished;
       const autoKey = input.automatic === true ? JSON.stringify(source) : '';
       const automatic = autoKey && jobs.find(j => (j.provider || 'wavespeed') === this.provider && j.autoKey === autoKey && !['failed', 'cancelled'].includes(j.status));
       if (automatic) return automatic;
       const mustQueue = jobs.some(j => j.status === 'queued') || jobs.filter(j => ACTIVE.has(j.status)).length >= MAX_ACTIVE_JOBS;
       const job = {
-        id: input.id, provider: this.provider, source, prompt, model, params, autoKey,
+        id: input.id, provider: this.provider, source, prompt, ...options, autoKey,
         configRevision: Number.isSafeInteger(input.configRevision) ? input.configRevision : config.revision || 0,
         dimensionSource: input.dimensionSource === 'request' ? 'request' : 'json',
         status: 'queued', queueOrder: Math.max(0, ...jobs.map(j => j.queueOrder ?? j.createdAt)) + 1, taskId: '', images: [], outputs: [], error: '',
@@ -101,6 +103,7 @@ export class WaveSpeedService {
     await this.store.saveJob(job);
     try {
       const result = await this.submitPrediction(job, config);
+      Object.assign(job, this.predictionDetails(result));
       if (typeof result.id !== 'string' || !/^[a-zA-Z0-9_-]{1,200}$/.test(result.id)) throw new AppError(`${this.label} 未返回有效任务 ID。`, 502);
       job.taskId = result.id;
       job.status = 'submitted';
@@ -180,6 +183,7 @@ export class WaveSpeedService {
       try {
         if (job.status !== 'download_failed') {
           const result = await this.refreshPrediction(job, config);
+          Object.assign(job, this.predictionDetails(result));
           if (FAILURE.has(result.status)) {
             job.status = 'failed'; job.error = safeError(new Error(typeof result.error === 'string' ? result.error : `生成失败：${result.status}`), config);
           } else if (result.status === 'completed') {

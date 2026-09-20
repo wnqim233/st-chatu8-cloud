@@ -1,9 +1,9 @@
 /* Cloud settings editor. Aladdin Free Public License; see ../LICENSE. */
-import { portableConfig, plainObject } from '../shared/config.js';
+import { portableConfig, plainObject, civitaiPayment, civitaiPaymentLabel } from '../shared/config.js';
 import { providerConfig } from './client.js';
 
 const fields = {
-  civitai: { 'civitai-model': 'civitaiModel', 'civitai-buzz': 'civitaiMaxBuzz' },
+  civitai: { 'civitai-model': 'civitaiModel', 'civitai-buzz': 'civitaiMaxBuzz', 'civitai-currency': 'civitaiCurrency' },
   wavespeed: { model: 'imageModel', 'size-mode': 'sizeMode', 'negative-field': 'negativeField' },
   shared: { prefix: 'fixedPrompt', suffix: 'fixedPromptEnd', negative: 'negativePrompt', 'dimension-source': 'dimensionSource' },
 };
@@ -47,7 +47,9 @@ export function createSettingsEditor({ api, deps, $, notify, onModeChanged }) {
     }
     const cfg = providerConfig(saved, editing);
     $('saved-summary').textContent = `${names[editing]} · ${parameterSummary(cfg.imageParams)}\nLoRA：\n${loraSummary(cfg.imageParams)}`;
-    $('saved-params').textContent = JSON.stringify({ model: cfg.imageModel, params: cfg.imageParams }, null, 2);
+    if (editing === 'civitai') $('saved-summary').textContent += `\n支付：${civitaiPaymentLabel(saved.civitaiCurrency)} · 禁止自动升级扣费`;
+    $('saved-params').textContent = JSON.stringify({ model: cfg.imageModel, params: cfg.imageParams, ...(editing === 'civitai' ? { payment: civitaiPayment(saved.civitaiCurrency) } : {}) }, null, 2);
+    $('civitai-payment-hint').textContent = $('civitai-currency').value === 'yellow' ? '从开始就仅用黄 Buzz，允许成熟内容；余额不足不换币。费用以同币种报价和平台账单为准，不保证固定价格。' : '仅用所选币种生成 SFW。若输出被判成熟内容，平台可能扣留图片；插件不会自动改扣黄 Buzz。原任务是否退款以平台账单为准。';
     $('dimension-hint').textContent = $('dimension-source').value === 'json' ? '按 JSON 时，正文按钮的宽高不会覆盖参数。' : '正文按钮带有宽高时会覆盖 JSON；没有宽高时仍用 JSON。';
   }
   function fill(config, provider) {

@@ -2,7 +2,7 @@
  * Contract: https://orchestration.civitai.com/openapi/v2-consumers.json
  * Reuses the WaveSpeed job journal, recovery, downloader and per-user isolation.
  */
-import { AppError, text, plainObject, validateCivitai } from './config.js';
+import { AppError, text, plainObject, validateCivitai, civitaiPayment, civitaiPaymentLabel } from './config.js';
 import { authHeaders, jsonRequest } from './http.js';
 
 const API = 'https://orchestration.civitai.com/v2/consumer/workflows';
@@ -21,7 +21,7 @@ export function workflowBody(job, estimate = false) {
       ...job.params, seed: job.params.seed ?? job.seed, model: job.model, prompt: job.prompt };
   }
   return {
-    tags: ['st-chatu8'], currencies: [],
+    tags: ['st-chatu8'], ...civitaiPayment(job.civitaiCurrency),
     // Estimates and paid requests must have separate idempotency identities.
     ...(!estimate ? { externalId: `chatu8-${job.id}` } : {}),
     steps: [{ $type: krea2 ? 'imageGen' : 'textToImage', name: 'image', timeout: '00:10:00', retries: 0, input }],
@@ -31,12 +31,19 @@ export function workflowBody(job, estimate = false) {
 export function normalizeWorkflow(value) {
   if (!plainObject(value) || typeof value.status !== 'string') throw new AppError('Civitai 工作流响应无效，请到平台核对任务。', 502);
   const outputs = [];
+  const blocked = [];
   for (const step of value.steps || []) {
+    for (const blob of [...(step.output?.images || []), ...(step.output?.blobs || [])]) {
+      if (blob.available === false || blob.blockedReason) blocked.push(blob.blockedReason || '图片不可用，可能被内容规则扣留');
+    }
     for (const image of step.output?.images || []) if (image.available && typeof image.url === 'string') outputs.push(image.url);
-    for (const blob of step.output?.blobs || []) if (blob.available !== false && typeof blob.url === 'string' && (blob.mimeType || blob.type || '').startsWith('image/')) outputs.push(blob.url);
+    for (const blob of step.output?.blobs || []) if (blob.available === true && typeof blob.url === 'string' && (blob.type === 'image' || (blob.mimeType || '').startsWith('image/'))) outputs.push(blob.url);
   }
-  const status = value.status === 'succeeded' ? 'completed' : ['failed', 'expired', 'canceled'].includes(value.status) ? 'failed' : 'processing';
-  return { id: value.id, status, outputs: [...new Set(outputs)], error: typeof value.error === 'string' ? value.error : `Civitai 工作流状态：${value.status}` };
+  const warning = blocked.length ? `Civitai 有图片未放行：${[...new Set(blocked)].join('；')}。插件不会自动换币、补扣或重新生成；请在平台核对原任务。` : '';
+  const status = value.status === 'succeeded' ? (outputs.length ? 'completed' : 'failed') : ['failed', 'expired', 'canceled'].includes(value.status) ? 'failed' : 'processing';
+  return { id: value.id, status, outputs: [...new Set(outputs)], warning,
+    cost: value.cost, transactions: value.transactions,
+    error: typeof value.error === 'string' ? value.error : warning || (value.status === 'succeeded' ? 'Civitai 已结束，但没有可下载的图片；请核对原任务，插件不会自动重提或补扣。' : `Civitai 工作流状态：${value.status}`) };
 }
 
 export const withCivitai = Base => class CivitaiService extends Base {
@@ -45,25 +52,35 @@ export const withCivitai = Base => class CivitaiService extends Base {
 
   options(input, config) {
     if (!config.civitaiKey) throw new AppError('请先保存 Civitai API Key。');
-    return validateCivitai(input.model ?? config.civitaiModel, input.params ?? config.civitaiParams);
+    const civitaiCurrency = input.civitaiCurrency ?? config.civitaiCurrency ?? 'yellow';
+    civitaiPayment(civitaiCurrency);
+    return { ...validateCivitai(input.model ?? config.civitaiModel, input.params ?? config.civitaiParams), civitaiCurrency };
   }
 
   async estimate(input, config) {
-    const { model, params } = this.options(input, config);
-    const job = { model, params, seed: input.seed ?? params.seed ?? crypto.getRandomValues(new Uint32Array(1))[0], prompt: text(input.prompt, '预估提示词', model.startsWith('urn:air:krea2:') ? 10000 : 16000, true) };
+    const { model, params, civitaiCurrency } = this.options(input, config);
+    const job = { model, params, civitaiCurrency, seed: input.seed ?? params.seed ?? crypto.getRandomValues(new Uint32Array(1))[0], prompt: text(input.prompt, '预估提示词', model.startsWith('urn:air:krea2:') ? 10000 : 16000, true) };
     const response = await jsonRequest(this.fetcher, `${API}?whatif=true`, {
       method: 'POST', headers: authHeaders(config.civitaiKey), body: JSON.stringify(workflowBody(job, true)),
     }, 20000);
     const total = response?.cost?.total;
     if (!Number.isFinite(total) || total < 0) throw new AppError('Civitai 未返回有效的 Buzz 预估；未提交付费任务。', 502);
-    return { estimatedBuzz: total, maxBuzz: config.civitaiMaxBuzz, withinLimit: total <= config.civitaiMaxBuzz };
+    return { estimatedBuzz: total, maxBuzz: config.civitaiMaxBuzz, withinLimit: total <= config.civitaiMaxBuzz,
+      civitaiCurrency, payment: civitaiPayment(civitaiCurrency), cost: response.cost,
+      transactions: response.transactions, insufficientBuzz: response.transactions?.insufficientBuzz === true };
   }
 
   async beforeSubmit(job, config) {
+    job.civitaiCurrency = this.options(job, config).civitaiCurrency;
     job.seed = job.params.seed ?? crypto.getRandomValues(new Uint32Array(1))[0];
     const estimate = await this.estimate(job, config);
     if (!estimate.withinLimit) throw new AppError(`Civitai 预估 ${estimate.estimatedBuzz} Buzz，超过已设置的 ${estimate.maxBuzz} Buzz 上限，未提交付费任务。`);
-    return { estimatedBuzz: estimate.estimatedBuzz };
+    if (estimate.insufficientBuzz) throw new AppError(`Civitai ${civitaiPaymentLabel(job.civitaiCurrency)}余额不足，未提交付费任务，也不会改扣其他币种。`);
+    return { estimatedBuzz: estimate.estimatedBuzz, buzzEstimate: { cost: estimate.cost, transactions: estimate.transactions } };
+  }
+
+  predictionDetails(result) {
+    return { warning: result.warning, ...(result.cost ? { buzzCost: result.cost } : {}), ...(result.transactions ? { buzzTransactions: result.transactions } : {}) };
   }
 
   async submitPrediction(job, config) {

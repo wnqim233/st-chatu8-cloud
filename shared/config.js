@@ -3,7 +3,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   wavespeedKey: '',
   civitaiKey: '', civitaiModel: 'urn:air:sdxl:checkpoint:civitai:101055@128078',
   civitaiParams: { width: 1024, height: 1024, steps: 25, cfgScale: 5, scheduler: 'eulerA', quantity: 1 },
-  civitaiMaxBuzz: 100,
+  civitaiMaxBuzz: 100, civitaiCurrency: 'yellow',
   imageModel: 'wavespeed-ai/z-image/turbo', imageParams: { size: '1024*1024' },
   dimensionSource: 'json', fixedPrompt: '', fixedPromptEnd: '', negativePrompt: '', sizeMode: 'size', negativeField: '',
 });
@@ -60,6 +60,8 @@ export function updateConfig(old, input) {
   validateImage(next.imageModel, next.imageParams);
   if (Object.hasOwn(input, 'civitaiParams')) next.civitaiParams = input.civitaiParams;
   if (Object.hasOwn(input, 'civitaiMaxBuzz')) next.civitaiMaxBuzz = input.civitaiMaxBuzz;
+  if (Object.hasOwn(input, 'civitaiCurrency')) next.civitaiCurrency = input.civitaiCurrency;
+  civitaiPayment(next.civitaiCurrency);
   validateCivitai(next.civitaiModel, next.civitaiParams);
   if (!Number.isInteger(next.civitaiMaxBuzz) || next.civitaiMaxBuzz < 1 || next.civitaiMaxBuzz > 100000) throw new AppError('单次 Buzz 预估上限须为 1 到 100000 的整数。');
   next.revision = (Number.isSafeInteger(old.revision) ? old.revision : 0) + 1;
@@ -76,6 +78,15 @@ export function safeError(error, config = {}) {
   let value = String(error?.message || '请求失败，请稍后重试。');
   for (const key of [config.civitaiKey, config.wavespeedKey].filter(Boolean)) value = value.split(key).join('[已隐藏]');
   return value.replace(/Bearer\s+\S+/gi, 'Bearer [已隐藏]').slice(0, 600);
+}
+
+export function civitaiPayment(currency = DEFAULT_CONFIG.civitaiCurrency) {
+  if (!['yellow', 'blue', 'green', 'blue_green'].includes(currency)) throw new AppError('请选择有效的 Buzz 币种：黄、蓝、绿或蓝＋绿。');
+  return { currencies: currency === 'blue_green' ? ['blue', 'green'] : [currency], allowMatureContent: currency === 'yellow', upgradeMode: 'manual' };
+}
+
+export function civitaiPaymentLabel(currency) {
+  return ({ yellow: '仅黄 Buzz · 允许成熟内容', blue: '仅蓝 Buzz · 仅 SFW', green: '仅绿 Buzz · 仅 SFW', blue_green: '蓝＋绿 Buzz · 仅 SFW' })[currency] || '旧任务未记录币种';
 }
 
 export function validateCivitai(model, params) {

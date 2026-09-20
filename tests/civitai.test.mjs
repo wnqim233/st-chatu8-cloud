@@ -8,6 +8,7 @@ import { DEFAULT_CONFIG, validateCivitai, publicConfig, updateConfig, safeError 
 import { CivitaiService, workflowBody, normalizeWorkflow } from '../server/civitai.mjs';
 import { createHandlers } from '../server/index.mjs';
 import { mapParameters, providerConfig } from '../wavespeed/client.js';
+import { civitaiPayment, portableConfig } from '../shared/config.js';
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aSUcAAAAASUVORK5CYII=', 'base64');
@@ -137,4 +138,78 @@ test('Krea 2 validates its own limits, diffusionmodel AIR, raw variant and LoRA 
   assert.equal(step.input.variant, undefined); assert.equal(step.input.diffusionModel, model); assert.deepEqual(step.input.loras, params.loras);
   for (const p of [{scheduler:'eulerA'}, {width:2049}, {quantity:13}, {batchSize:2}, {additionalNetworks:{}}, {variant:'edit'}, {engine:'fal'}, {loras:{[lora]:'bad'}}]) assert.throws(() => validateCivitai(model,p));
   assert.throws(() => validateCivitai(config.civitaiModel,{scheduler:'beta'}));
+});
+
+test('Buzz currency settings validate, export and default safely for old configurations', () => {
+  assert.deepEqual(civitaiPayment(), { currencies: ['yellow'], allowMatureContent: true, upgradeMode: 'manual' });
+  for (const value of ['', 'automatic', ['yellow'], null, 'blue,yellow']) assert.throws(() => updateConfig(config, { civitaiCurrency: value }), /币种/);
+  assert.equal(portableConfig(updateConfig(config, { civitaiCurrency: 'blue_green' })).civitaiCurrency, 'blue_green');
+});
+
+test('all four Buzz choices use identical explicit payment fields for estimates and paid requests', async t => {
+  for (const currency of ['yellow', 'blue', 'green', 'blue_green']) {
+    const { db } = await setup(t); const calls = [];
+    const service = new CivitaiService(db, { fetcher: async (url, opts) => {
+      calls.push({ url, method: opts.method, body: JSON.parse(opts.body) });
+      return json(url.includes('whatif') ? { cost: { total: 9, factors: { test: 1 }, fees: { lora: 2 }, variable: true }, transactions: { list: [{ type: 'debit', accountType: currency === 'blue_green' ? 'blue' : currency, amount: 9 }], insufficientBuzz: false } } : { id: 'paid', status: 'scheduled' });
+    } });
+    const job = await service.submit(input(), { ...config, civitaiCurrency: currency });
+    assert.equal(calls.length, 2); assert.equal(job.civitaiCurrency, currency);
+    for (const call of calls) {
+      assert.deepEqual(call.body.currencies, currency === 'blue_green' ? ['blue', 'green'] : [currency]);
+      assert.equal(call.body.allowMatureContent, currency === 'yellow');
+      assert.equal(call.body.upgradeMode, 'manual'); assert.equal(call.body.ephemeral, undefined);
+    }
+    assert.equal(job.buzzEstimate.cost.variable, true); assert.deepEqual(job.buzzEstimate.cost.fees, { lora: 2 });
+    assert.equal((await db.job(job.id)).buzzEstimate.transactions.list[0].amount, 9);
+  }
+});
+
+test('insufficient selected Buzz prevents paid POST instead of falling back to another currency', async t => {
+  const { db } = await setup(t); let calls = 0;
+  const service = new CivitaiService(db, { fetcher: async url => {
+    calls++; assert.ok(url.includes('whatif'));
+    return json({ cost: { total: 9 }, transactions: { insufficientBuzz: true, list: [] } });
+  } });
+  await assert.rejects(service.submit(input(), config), /余额不足/);
+  assert.equal(calls, 1); assert.deepEqual(await db.jobs(), []);
+});
+
+test('queued jobs freeze their Buzz choice even after settings change or service restarts', async t => {
+  const { db } = await setup(t); const bodies = [];
+  const opts = { fetcher: async (url, req) => {
+    bodies.push(JSON.parse(req.body));
+    return json(url.includes('whatif') ? { cost: { total: 9 } } : { id: 'w-' + bodies.length, status: 'scheduled' });
+  } };
+  const service = new CivitaiService(db, opts);
+  const blue = { ...config, civitaiCurrency: 'blue' };
+  const first = await service.submit(input(), blue);
+  // The same prompt with a different currency is a distinct request.
+  const second = await service.submit(input('civitai-request-0002'), config);
+  assert.notEqual(first.id, second.id);
+  const queued = await service.submit({ ...input('civitai-request-0003'), prompt: 'second landscape' }, blue);
+  assert.equal(queued.status, 'queued'); assert.equal(bodies.length, 4);
+  await db.saveJob({ ...first, status: 'failed' });
+  const restarted = new CivitaiService(db, opts);
+  await restarted.startQueued(queued.id, config);
+  assert.equal(bodies.length, 6);
+  for (const body of bodies.slice(-2)) assert.deepEqual(body.currencies, ['blue']);
+});
+
+test('withheld output and billing are visible without automatic upgrade or duplicate POST', async t => {
+  const { db } = await setup(t); let time = 0; const methods = [];
+  const transactions = { list: [{ type: 'debit', amount: 9, accountType: 'blue' }] };
+  const service = new CivitaiService(db, { now: () => time, fetcher: async (url, opts) => {
+    methods.push(opts.method || 'GET');
+    if (url.includes('whatif')) return json({ cost: { total: 9 } });
+    if (opts.method === 'POST') return json({ id: 'withheld', status: 'scheduled' });
+    return json({ id: 'withheld', status: 'succeeded', cost: { total: 9 }, transactions, steps: [{ output: { blobs: [{ type: 'image', available: false, blockedReason: 'mature content', url: 'https://images.example/blocked.png' }] } }] });
+  } });
+  const job = await service.submit(input(), { ...config, civitaiCurrency: 'blue' }); time = 5000;
+  const result = await service.refresh(job.id, config);
+  assert.equal(result.status, 'failed'); assert.match(result.error, /不会自动换币/);
+  assert.deepEqual(result.buzzTransactions, transactions); assert.equal(result.buzzCost.total, 9);
+  assert.deepEqual(result.images, []); await service.refresh(job.id, config);
+  assert.deepEqual(methods, ['POST', 'POST', 'GET']);
+  assert.deepEqual(normalizeWorkflow({ status: 'succeeded', steps: [{ output: { blobs: [{ type: 'image', available: true, url: 'https://images.example/ok.png' }] } }] }).outputs, ['https://images.example/ok.png']);
 });

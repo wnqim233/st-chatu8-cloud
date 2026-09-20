@@ -1,6 +1,6 @@
 # 安装智绘姬 · 云端独立版
 
-**当前版本 3.1.0-cloud.9 是普通酒馆前端扩展。无需安装服务端插件，无需修改 `enableServerPlugins`。** 浏览器直接调用 WaveSpeed / Civitai；世界书、LLM、人物预设、正文手势和图片操作复用原智绘姬代码。
+**当前版本 3.1.0-cloud.10 是普通酒馆前端扩展。无需安装服务端插件，无需修改 `enableServerPlugins`。** 浏览器直接调用 WaveSpeed / Civitai；世界书、LLM、人物预设、正文手势和图片操作复用原智绘姬代码。
 
 ## 用 Git 安装
 
@@ -37,6 +37,8 @@ Civitai 使用官方 Orchestration v2 的 `textToImage` 工作流：
 - 参数示例：`{"width":1024,"height":1024,"steps":25,"cfgScale":5,"scheduler":"eulerA","quantity":1}`。负面词用 `negativePrompt`；省略 seed 时随机；输出格式可为 `png`、`jpeg`、`webP`。
 - LoRA 通过 `additionalNetworks` 配置，例如 `{"urn:air:sdxl:lora:civitai:模型ID@版本ID":{"strength":0.8}}`，换成真实且与主模型兼容的 AIR。
 - 每次提交前免费预估 Buzz，超过设定上限或无法预估时不提交付费任务。默认预估上限 100 Buzz，可调整；最终扣费以平台为准。
+- 在「使用哪种 Buzz？」中选择仅黄（默认，允许成熟内容）、仅蓝、仅绿或蓝＋绿（后三项仅 SFW）。所有选项固定 `upgradeMode: manual`，不会自动升级补扣黄币。余额不足则停止，报价和生成使用相同币种；排队任务保留入队选择。升级前已提交的平台任务不能追溯修改。
+- 免费预估区显示 `cost` 和 `transactions`；任务卡的「查看 Buzz 报价与平台交易明细」保存报价及平台最新返回值，可核对授权费和各币种扣款、退款。没有真实账单时不能仅凭总额断定双扣，详见 `docs/CIVITAI_BUZZ.md`。
 
 本次新增的两种后端只接文生图；其他视频、图生图及编辑功能保持原后端用途。
 
@@ -60,7 +62,7 @@ Key、任务与下载结果保存在当前浏览器 IndexedDB，独立于原版�
 
 ## 从 cloud.2 更新 / 导入旧配置后页面空白
 
-在酒馆的扩展管理中更新「智绘姬 · 云端独立版」，然后刷新页面；无需卸载、重置设置或再次导入。更新到 `3.1.0-cloud.9` 后重新打开 WaveSpeed / Civitai 页。
+在酒馆的扩展管理中更新「智绘姬 · 云端独立版」，然后刷新页面；无需卸载、重置设置或再次导入。更新到 `3.1.0-cloud.10` 后重新打开 WaveSpeed / Civitai 页。
 
 此版修复菜单高亮与内容面板不同步，以及旧配置导入后未刷新生图模式的问题。云端设置入口始终保留；已选择 WaveSpeed / Civitai 时，导入旧后端配置会保留当前云端模式。世界书、LLM、人物和主题等配置仍沿用原版导入方式。浏览器内的 Key 和任务不会因导入其他安装的存储标识而切换；设置 JSON 本身不包含这两家的 Key。
 

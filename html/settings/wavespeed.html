@@ -11,14 +11,18 @@
       <h3>Civitai 配置</h3>
       <div class="st-chatu8-field"><label for="ws-civitai-key">API Key <span id="ws-civitai-key-state" class="ws-hint"></span></label><input id="ws-civitai-key" type="password" autocomplete="new-password" placeholder="留空保留已保存的 Key"></div>
       <div class="st-chatu8-field"><label for="ws-civitai-model">模型 AIR</label><input id="ws-civitai-model" spellcheck="false"></div>
+      <div class="st-chatu8-field"><label for="ws-civitai-currency">使用哪种 Buzz？</label><select id="ws-civitai-currency"><option value="yellow">仅黄 Buzz · 允许成熟内容（默认）</option><option value="blue">仅蓝 Buzz · 仅 SFW</option><option value="green">仅绿 Buzz · 仅 SFW</option><option value="blue_green">蓝＋绿 Buzz · 仅 SFW</option></select></div>
+      <p id="ws-civitai-payment-hint" class="ws-hint"></p>
+      <p class="ws-hint">所有选项均禁止自动升级扣费。报价和实际提交使用相同的支付设置；已排队任务保留入队时的币种。</p>
       <div class="st-chatu8-field"><label for="ws-civitai-params">生成参数 JSON · 包含 LoRA</label><textarea id="ws-civitai-params" rows="12" spellcheck="false"></textarea></div>
       <div class="ws-actions"><button type="button" data-ws-save="civitai" class="menu_button ws-save-inline">保存 Civitai 配置</button><button type="button" id="ws-civitai-format" class="menu_button">整理 JSON 格式</button></div>
       <p data-ws-save-state="civitai" class="ws-hint" role="status" aria-live="polite"></p>
-      <div class="st-chatu8-field"><label for="ws-civitai-buzz">单次费用上限（Buzz）</label><input id="ws-civitai-buzz" type="number" min="1" max="100000" step="1"></div>
+      <div class="st-chatu8-field"><label for="ws-civitai-buzz">单次预估费用上限（Buzz）</label><input id="ws-civitai-buzz" type="number" min="1" max="100000" step="1"></div>
       <details><summary>免费预估与参数说明</summary>
         <p class="ws-hint">每次轮到生图时先免费预估，超出上限或预估失败就不提交。最终费用以平台账单为准。</p>
         <div class="st-chatu8-field"><label for="ws-civitai-preview">预估用提示词</label><input id="ws-civitai-preview" value="a landscape, illustration"></div>
         <div class="ws-actions"><button type="button" id="ws-civitai-estimate" class="menu_button">保存 Civitai 并免费预估</button></div>
+        <pre id="ws-civitai-cost" class="ws-code" aria-live="polite">预估后显示费用构成和币种明细。</pre>
         <p class="ws-hint">Krea 2 使用 loras（完整 AIR → 数字权重）；其他模型使用 additionalNetworks。省略 seed 则随机生成。这里不填写 prompt。</p>
         <pre class="ws-code">"loras": {"urn:air:krea2:lora:civitai:模型ID@版本ID": 0.7}
 其他模型：
