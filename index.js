@@ -84403,8 +84403,38 @@ init_config();
 init_ui_common();
 
 
-var generationTabs = ["sd", "novelai", "comfyui", "runninghub"];
-function syncAllPromptReplaceFields(force = false) {
+var generationTabs = ["sd", "novelai", "comfyui", "runninghub", "wavespeed"];
+function updateCloudPromptReplaceState() {
+  const state = document.getElementById("ws-prompt-replace-state");
+  const textarea = document.getElementById("prompt_replace_text_wavespeed");
+  if (!state || !textarea) return;
+  const settings3 = extension_settings63[extensionName];
+  const name = settings3.prompt_replace_id;
+  const isDirty = textarea.value !== (settings3.prompt_replace?.[name]?.text ?? "");
+  state.dataset.dirty = String(isDirty);
+  state.textContent = isDirty ? "有修改未保存。点击“保存规则”后，新生图任务才会使用。" : `当前预设：${name} · 已保存，Civitai / WaveSpeed 共用。`;
+}
+function refreshPromptReplacePresets() {
+  const settings3 = extension_settings63[extensionName];
+  if (!settings3.prompt_replace || !Object.keys(settings3.prompt_replace).length) {
+    settings3.prompt_replace = { "默认": { text: "" } };
+  }
+  if (!Object.hasOwn(settings3.prompt_replace, settings3.prompt_replace_id)) {
+    settings3.prompt_replace_id = Object.hasOwn(settings3.prompt_replace, "默认") ? "默认" : Object.keys(settings3.prompt_replace)[0];
+  }
+  generationTabs.forEach((mode) => {
+    const select = document.getElementById("prompt_replace_id" + getSuffix(mode));
+    if (!select) return;
+    select.innerHTML = "";
+    for (const key of Object.keys(settings3.prompt_replace)) {
+      const option = new Option(key, key);
+      option.title = key;
+      select.add(option);
+    }
+  });
+  syncAllPromptReplaceFields(true);
+}
+function syncAllPromptReplaceFields(force = false, previousText) {
   const settings3 = extension_settings63[extensionName];
   const presetName = settings3.prompt_replace_id;
   const currentPreset = settings3.prompt_replace[presetName] || {};
@@ -84413,13 +84443,15 @@ function syncAllPromptReplaceFields(force = false) {
     const replaceSelect = document.getElementById("prompt_replace_id" + suffix);
     if (replaceSelect) replaceSelect.value = presetName;
     const textarea = document.getElementById("prompt_replace_text" + suffix);
-    const warning = textarea.closest(".st-chatu8-field-col").querySelector(".st-chatu8-unsaved-warning");
-    let isDirty = textarea.value !== (currentPreset.text ?? "");
+    if (!textarea) return;
+    const warning = textarea.closest(".st-chatu8-field-col")?.querySelector(".st-chatu8-unsaved-warning");
+    const isDirty = textarea.value !== (currentPreset.text ?? "") && (previousText === void 0 || textarea.value !== previousText);
     if (force || !isDirty) {
       textarea.value = currentPreset.text ?? "";
       if (warning) $(warning).hide();
     }
   });
+  updateCloudPromptReplaceState();
 }
 function prompt_replace_change(mode) {
   const settings3 = extension_settings63[extensionName];
@@ -84457,13 +84489,7 @@ function prompt_replace_new(mode) {
       settings3.prompt_replace[newName] = { "text": "" };
       settings3.prompt_replace_id = newName;
       saveSettingsDebounced38();
-      try {
-        if (typeof window.loadSilterTavernChatu8Settings === "function") {
-          window.loadSilterTavernChatu8Settings();
-        }
-      } catch (error) {
-        console.warn("Failed to refresh UI after creating preset:", error);
-      }
+      refreshPromptReplacePresets();
     }
   });
 }
@@ -84484,13 +84510,7 @@ function prompt_replace_rename(mode) {
       delete settings3.prompt_replace[currentName];
       settings3.prompt_replace_id = newName;
       saveSettingsDebounced38();
-      try {
-        if (typeof window.loadSilterTavernChatu8Settings === "function") {
-          window.loadSilterTavernChatu8Settings();
-        }
-      } catch (error) {
-        console.warn("Failed to refresh UI after renaming preset:", error);
-      }
+      refreshPromptReplacePresets();
     }
   });
 }
@@ -84503,13 +84523,7 @@ function prompt_replace_save(mode) {
       settings3.prompt_replace[result] = { "text": text };
       settings3.prompt_replace_id = result;
       saveSettingsDebounced38();
-      try {
-        if (typeof window.loadSilterTavernChatu8Settings === "function") {
-          window.loadSilterTavernChatu8Settings();
-        }
-      } catch (error) {
-        console.warn("Failed to refresh UI after saving preset:", error);
-      }
+      refreshPromptReplacePresets();
       alert(`\u66FF\u6362\u89C4\u5219 "${result}" \u5DF2\u4FDD\u5B58\u3002`);
     }
   });
@@ -84525,11 +84539,13 @@ function prompt_replace_update(mode) {
   stylishConfirm(`\u786E\u5B9A\u8981\u8986\u76D6\u5F53\u524D\u66FF\u6362\u89C4\u5219 "${presetName}" \u5417\uFF1F`).then((confirmed) => {
     if (confirmed) {
       const text = document.getElementById("prompt_replace_text" + suffix).value;
+      const previousText = settings3.prompt_replace[presetName].text ?? "";
       settings3.prompt_replace[presetName] = { "text": text };
       saveSettingsDebounced38();
       const textarea = document.getElementById("prompt_replace_text" + suffix);
       const warning = textarea.closest(".st-chatu8-field-col").querySelector(".st-chatu8-unsaved-warning");
       if (warning) $(warning).hide();
+      syncAllPromptReplaceFields(false, previousText);
     }
   });
 }
@@ -84547,13 +84563,7 @@ function prompt_replace_delete(mode) {
       Reflect.deleteProperty(settings3.prompt_replace, valueToDelete);
       settings3.prompt_replace_id = "\u9ED8\u8BA4";
       saveSettingsDebounced38();
-      try {
-        if (typeof window.loadSilterTavernChatu8Settings === "function") {
-          window.loadSilterTavernChatu8Settings();
-        }
-      } catch (error) {
-        console.warn("Failed to refresh UI after deleting preset:", error);
-      }
+      refreshPromptReplacePresets();
     }
   });
 }
@@ -84615,13 +84625,7 @@ function prompt_replace_import() {
           }
         }
         saveSettingsDebounced38();
-        try {
-          if (typeof window.loadSilterTavernChatu8Settings === "function") {
-            window.loadSilterTavernChatu8Settings();
-          }
-        } catch (error) {
-          console.warn("Failed to refresh UI after importing presets:", error);
-        }
+        refreshPromptReplacePresets();
         alert(`\u6210\u529F\u5BFC\u5165 ${Object.keys(importedData).length} \u4E2A\u66FF\u6362\u89C4\u5219\uFF0C\u5176\u4E2D ${newPresetsCount} \u4E2A\u662F\u5168\u65B0\u7684\u3002`);
       } catch (err) {
         alert("\u5BFC\u5165\u5931\u8D25\uFF0C\u8BF7\u786E\u4FDD\u6587\u4EF6\u662F\u6B63\u786E\u7684JSON\u683C\u5F0F\u3002");
@@ -84655,6 +84659,7 @@ function initPromptReplaceControls(settingsModal) {
       } else {
         $(warning).hide();
       }
+      updateCloudPromptReplaceState();
     });
   });
 }
@@ -109259,32 +109264,7 @@ async function initUI({ check_update: check_update2 }) {
         }
       });
     });
-    if (!settings2.prompt_replace) {
-      settings2.prompt_replace = { "\u9ED8\u8BA4": { "text": "" } };
-    }
-    if (!settings2.prompt_replace_id) {
-      settings2.prompt_replace_id = "\u9ED8\u8BA4";
-    }
-    generationTabs3.forEach((mode) => {
-      const suffix = getSuffix(mode);
-      const replaceSelect = document.getElementById("prompt_replace_id" + suffix);
-      if (replaceSelect) {
-        replaceSelect.innerHTML = "";
-        for (const key in settings2.prompt_replace) {
-          const option = new Option(key, key);
-          option.title = key;
-          replaceSelect.add(option);
-        }
-        replaceSelect.value = settings2.prompt_replace_id;
-      }
-      const currentPreset = settings2.prompt_replace[settings2.prompt_replace_id] || {};
-      const textarea = document.getElementById("prompt_replace_text" + suffix);
-      if (textarea) {
-        textarea.value = currentPreset.text ?? "";
-        const warning = textarea.closest(".st-chatu8-field-col").querySelector(".st-chatu8-unsaved-warning");
-        if (warning) $(warning).hide();
-      }
-    });
+    refreshPromptReplacePresets();
     if (!settings2.workers) {
       settings2.workers = {};
     }

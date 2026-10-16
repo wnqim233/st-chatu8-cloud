@@ -6,6 +6,41 @@
     <div class="ws-savebar"><span id="ws-save-state" role="status">正在读取已保存配置…</span><button type="button" id="ws-save" class="menu_button" disabled>保存并使用</button></div>
     <p id="ws-status" class="ws-hint" role="status" aria-live="polite">无需服务端插件。保存后对新生图任务生效。</p>
   </div>
+  <details class="st-chatu8-settings-section" id="ws-prompt-replace">
+    <summary><strong>提示词替换 · Civitai / WaveSpeed 共用</strong></summary>
+    <p class="ws-hint">在发送给生图模型前按规则修改提示词。沿用已有替换预设，每行一条；保存后对新任务生效。</p>
+    <div class="st-chatu8-field">
+      <label for="prompt_replace_id_wavespeed">替换预设</label>
+      <select id="prompt_replace_id_wavespeed" class="st-chatu8-select"></select>
+    </div>
+    <div class="st-chatu8-field-col">
+      <label for="prompt_replace_text_wavespeed">替换规则 <span class="st-chatu8-unsaved-warning" style="display:none">未保存</span></label>
+      <textarea id="prompt_replace_text_wavespeed" class="st-chatu8-textarea" rows="6" spellcheck="false" placeholder="白发=替换|silver hair"></textarea>
+    </div>
+    <div class="ws-actions">
+      <button type="button" id="prompt_replace_update_style_wavespeed" class="menu_button ws-save-inline">保存规则</button>
+      <button type="button" id="prompt_replace_new_wavespeed" class="menu_button">新建预设</button>
+      <button type="button" id="prompt_replace_save_style_wavespeed" class="menu_button">另存为</button>
+    </div>
+    <p id="ws-prompt-replace-state" class="ws-hint" role="status" aria-live="polite">正在读取替换预设…</p>
+    <details>
+      <summary>规则示例</summary>
+      <p class="ws-hint">普通替换：将“白发”改为 silver hair。</p>
+      <pre class="ws-code">白发=替换|silver hair</pre>
+      <p class="ws-hint">正则替换：将 eyes:blue / eyes:green 改为 blue eyes / green eyes，$1 表示匹配到的颜色。</p>
+      <pre class="ws-code">re(eyes:(blue|green))=替换|re($1 eyes)</pre>
+    </details>
+    <details>
+      <summary>预设管理与导入导出</summary>
+      <div class="ws-actions">
+        <button type="button" id="prompt_replace_rename_wavespeed" class="menu_button">重命名</button>
+        <button type="button" id="prompt_replace_import_wavespeed" class="menu_button">导入预设</button>
+        <button type="button" id="prompt_replace_export_current_wavespeed" class="menu_button">导出当前</button>
+        <button type="button" id="prompt_replace_export_all_wavespeed" class="menu_button">导出全部</button>
+        <button type="button" id="prompt_replace_delete_style_wavespeed" class="menu_button">删除预设</button>
+      </div>
+    </details>
+  </details>
   <fieldset id="ws-form" disabled>
     <section class="st-chatu8-settings-section" id="ws-civitai-panel" data-ws-provider="civitai">
       <h3>Civitai 配置</h3>

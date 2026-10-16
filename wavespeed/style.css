@@ -43,3 +43,5 @@
 #ch-tab-wavespeed [data-ws-save-state] { overflow-wrap: anywhere; min-height: 1.6em; }
 #ch-tab-wavespeed [data-ws-save-state][data-error=true] { color: #ffc66e; }
 #ch-tab-wavespeed button:disabled { opacity: .6; cursor: wait; }
+#ch-tab-wavespeed #prompt_replace_text_wavespeed { font-family: ui-monospace, monospace; font-size: 14px; line-height: 1.6; }
+#ch-tab-wavespeed #ws-prompt-replace-state[data-dirty=true] { color: #ffc66e; opacity: 1; }

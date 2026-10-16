@@ -17,7 +17,9 @@ for (const file of js) execFileSync(process.execPath, ['--check', file]);
 const main = await fs.readFile('index.js', 'utf8');
 const modules = JSON.parse(await fs.readFile('docs/reused-modules-sha256.json', 'utf8'));
 const backports = JSON.parse(await fs.readFile('docs/backported-modules-sha256.json', 'utf8'));
-const expectedModules = { ...modules, ...Object.fromEntries(Object.entries(backports.modules).map(([name, audit]) => [name, audit.sha256])) };
+const cloudUI = JSON.parse(await fs.readFile('docs/cloud-ui-modules-sha256.json', 'utf8'));
+const baseModules = { ...modules, ...Object.fromEntries(Object.entries(backports.modules).map(([name, audit]) => [name, audit.sha256])) };
+const expectedModules = { ...baseModules, ...Object.fromEntries(Object.entries(cloudUI.modules).map(([name, audit]) => [name, audit.sha256])) };
 for (const [name, expectedHash] of Object.entries(expectedModules)) {
   const marker = `// ${name}\n`;
   const start = main.lastIndexOf(marker);
@@ -30,9 +32,10 @@ for (const [name, expectedHash] of Object.entries(expectedModules)) {
   const actual = createHash('sha256').update(moduleSource).digest('hex');
   if (actual !== expectedHash) throw new Error(`Module differs from its documented original/backport fingerprint: ${name}`);
   if (modules[name] && backports.modules[name] && backports.modules[name].beforeSha256 !== modules[name]) throw new Error(`Backport baseline mismatch: ${name}`);
+  if (baseModules[name] && cloudUI.modules[name] && cloudUI.modules[name].beforeSha256 !== baseModules[name]) throw new Error(`Cloud UI baseline mismatch: ${name}`);
 }
 for (const hook of ['getWaveSpeedAdapter().mount();', 'getWaveSpeedAdapter().updateMode();', '"wavespeed": { widthKey:', 'var tabIds = ["wavespeed",']) if (!main.includes(hook)) throw new Error(`Missing hook: ${hook}`);
 const html = await fs.readFile('html/settings/wavespeed.html', 'utf8');
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]);
 if (new Set(ids).size !== ids.length) throw new Error('Duplicate WaveSpeed UI IDs');
-console.log(`PASS: ${js.length} JS syntax checks; ${Object.keys(upstream.files).length - changed.length} upstream files byte-identical; exactly ${changed.length} declared upstream files modified; ${Object.keys(modules).filter(name => name !== 'utils/chatDataUtils.js' && !backports.modules[name]).length} reused modules byte-identical; ${Object.keys(backports.modules).length} documented backport fingerprints; chatDataUtils storage-key normalization; hooks and HTML IDs checked.`);
+console.log(`PASS: ${js.length} JS syntax checks; ${Object.keys(upstream.files).length - changed.length} upstream files byte-identical; exactly ${changed.length} declared upstream files modified; ${Object.keys(modules).filter(name => name !== 'utils/chatDataUtils.js' && !backports.modules[name]).length} reused modules byte-identical; ${Object.keys(backports.modules).length} documented backport fingerprints; ${Object.keys(cloudUI.modules).length} cloud UI fingerprints; chatDataUtils storage-key normalization; hooks and HTML IDs checked.`);

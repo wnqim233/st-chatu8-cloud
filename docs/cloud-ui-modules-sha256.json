@@ -1,0 +1,17 @@
+{
+  "version": "3.1.0-cloud.13",
+  "baseVersion": "3.1.0-cloud.12",
+  "baseCommit": "64c252234fbc542a6fb1d14035236182abb138ef",
+  "modules": {
+    "utils/settings/prompt_replace.js": {
+      "beforeSha256": "1f5569a09f3560bd734aa854eff7369e49c32ec34efb7ebb5642670b2b66fb0a",
+      "sha256": "6b3e8af772ae54510d9a973492eaa0dfd3b0b41d11711b86988d079fe06b9ee1",
+      "purpose": "Expose the shared replacement preset controls on the cloud page; refresh only replacement fields and preserve unsaved drafts."
+    },
+    "utils/ui.js": {
+      "beforeSha256": "cb343f1418a140ef5eb6313ea57c65bfdb59e4229a8f74c7c958bf5d58a4a8f6",
+      "sha256": "603113cce6143fe11d3ae3503d680ceb76504981b41e395935187912517a40cf",
+      "purpose": "Initialize the cloud replacement selector from the same saved preset collection as the original backend pages."
+    }
+  }
+}

@@ -1,5 +1,16 @@
 # 验证记录
 
+## cloud.13 云端页提示词替换（2026-10-16）
+
+- `node --test tests/*.test.mjs`：57 项全部通过。
+- `node scripts/check.mjs`：25 个 JavaScript 文件语法、86 个未修改上游文件、原模块与 cloud.12 移植指纹、2 个 cloud.13 UI 模块指纹及 HTML ID 检查通过。
+- `node scripts/cloud-prompt-replace-smoke.mjs`：隔离 Chrome 中完成 21 项检查。加载完整设置页面与打包文件里的实际替换预设处理函数，验证旧预设直接显示、编辑与保存状态、同步原 SD 页面、保留另一页的不同草稿、刷新恢复，以及新建、另存为、重命名、切换取消／确认、删除、FileReader 导入和 Blob 导出。
+- 同一浏览器检查调用实际云端适配器的提示词准备函数：在 Civitai 和 WaveSpeed 参数路径中，保存的规则都把「白发, eyes:blue, long hair」改为「silver hair, blue eyes, long hair」。预设操作不切换生成后端，也不清空正在编辑的生成参数。
+- 1280 × 1100、390 × 844、360 × 640 无横向溢出，保存按钮可点击；已实际查看桌面及手机截图。结果位于本地 `test-results/cloud-prompt-replace/`。
+- 既有 `settings-save-smoke.mjs` 与 `mobile-settings-smoke.mjs` 回归通过：LoRA 修改／删除／清空、保存失败拦截、旧配置导入、刷新恢复，以及三种手机尺寸下的参数编辑与保存仍正常。
+
+测试页以 localStorage 代替酒馆的设置持久化回调，云端参数使用真实 IndexedDB；没有访问用户酒馆、个人预设或真实付费生图接口。浏览器复现：先启动 `node scripts/preview.mjs`，使用独立 Chromium 配置目录打开测试页面并启用调试端口 9234，再运行上述脚本。
+
 ## cloud.12 选择性移植上游 3.1.6（2026-10-16）
 
 - `node --test tests/*.test.mjs`：57 项通过。新增检查正则捕获组、原字面规则、正文边界、旧缓存 MIME、thinking 分段过滤、停止流式后的缓存查询失效、云端排队超过三分钟不提前超时、跨聊天仍接收已提交任务结果，以及按钮异常收尾。保留 LoRA、币种、零小费、迁移、FIFO 和付费请求去重回归。
