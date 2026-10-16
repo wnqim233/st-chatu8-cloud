@@ -17,7 +17,7 @@ test('WaveSpeed calls the actual upstream replacement and prompt composition fun
   vm.runInContext([
     between('function stripChineseAnnotations(text)', 'function blobToDataURL('),
     between('async function zhengmian(', 'async function fumian('),
-    between('async function prompt_replace(', 'async function prompt_replace_banana('),
+    between('function parseReWrapper(', 'function getRequestHeaders('),
   ].join('\n'), sandbox);
   const adapter = createWaveSpeedAdapter({ replacePrompt: sandbox.prompt_replace, composePrompt: sandbox.zhengmian });
   const prepared = await adapter.prepare({ prompt: '白发 traveler in the rain（无须画出的注释）', width: 768, height: 1024 }, { ...DEFAULT_CONFIG, dimensionSource: 'request', fixedPrompt: 'illustration', fixedPromptEnd: 'soft light' });

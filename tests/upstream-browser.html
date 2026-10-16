@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cloud.12 浏览器回归</title>
+<style>body{font:16px/1.6 system-ui;background:#101b2a;color:#e6edf5;margin:32px;max-width:900px}h1{font-size:26px}li{margin:8px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#1b2a3c;padding:16px;border-radius:10px}img{width:160px;height:100px;border-radius:8px;margin-right:16px}#status{color:#8ce2b2}</style>
+<h1>cloud.12 浏览器回归</h1>
+<p id="status">检查中…</p><ol id="checks"></ol>
+<h2>正文插图位置</h2><article class="mes" mesid="0"><pre class="mes_text"></pre></article>
+<h2>旧缓存图片解码</h2><div id="images"></div>
+<script type="module">
+const checks=[];
+const check=(condition,label)=>{if(!condition)throw Error(label);checks.push(label);const li=document.createElement('li');li.textContent='通过 · '+label;document.querySelector('#checks').append(li)};
+try{
+ const source=await(await fetch('/index.js')).text();
+ const fn=name=>{const match=new RegExp('(?:async )?function '+name+'\\(').exec(source);if(!match)throw Error(name);return source.slice(match.index,source.indexOf('\n}',match.index)+2)};
+ const quiet={log(){},warn(){},error(){},group(){},groupEnd(){}};
+ const settings={insertOriginalText:'true',startTag:'image###',endTag:'###'};
+ const chat=[{mes:''}];let saves=0,renders=0;
+ const env={console:quiet,extensionName:'st-chatu8-cloud',chat,getContext:()=>({chat}),debugTimer:()=>({end(){}}),debugBranch(){},debugLog(){},debugElement(){},saveChatConditional:async()=>{saves++},renderMessage:async()=>{renders++}};
+ const names=['getImageTags','removeThinkingText','removeThinkingTextOnly','fuzzyMatchLine','calculateLineSimilarity','calculateCharOverlapWithFrequency','calculateNgramSimilarity','findMesTextFromElement','insertAt','saveImageGroup'];
+ const code=names.map(fn).join('\n');
+ for(const key of new Set(code.match(/\bextension_settings\d*\b/g)||[]))env[key]={'st-chatu8-cloud':settings};
+ const api=Function(...Object.keys(env),code+'\nreturn {saveImageGroup};')(...Object.values(env));
+ const el=document.querySelector('.mes_text');
+ const target='她站在窗边，看着远处慢慢亮起的灯火。';
+ const padding='街道上有几个人正慢慢走过，风吹动树叶，房间里传来钟声。'.repeat(6);
+ for(const [label,story,content] of [
+  ['重复段落只在 content 正文插图',target+'\n<content>\n'+target+'\n'+padding+'\n</content>',true],
+  ['thinking 和前置说明不抢占正文位置','<think>'+target+'</think>\n'+target+'\n<content>\n'+target+'\n'+padding+'\n</content>',true],
+  ['普通正文继续支持原有插图',target+'\n'+padding,false],
+ ]){
+  chat[0]={mes:story};el.textContent=story;
+  await api.saveImageGroup([{regex:target,tag:'image###landscape###'}],story,el);
+  const marker='<image>image###landscape###</image>',position=chat[0].mes.indexOf(marker);
+  check(position>0 && chat[0].mes.indexOf(marker,position+1)===-1,label+'：只插入一次');
+  if(content)check(position>chat[0].mes.indexOf('<content>') && position<chat[0].mes.indexOf('</content>'),label+'：位于正文内');
+  else check(position<chat[0].mes.indexOf(padding),label+'：位于目标行之后');
+  el.textContent=chat[0].mes;
+ }
+ check(saves===3&&renders===3,'聊天保存和重绘每次执行一次');
+ let cached;
+ const dbCode=['detectMimeFromBuffer','getImageByUUID','getImageBlobByUUID'].map(fn).join('\n');
+ const dbEnv={storeReadOnly:async()=>({data:cached}),arrayBufferToBase64:data=>btoa(String.fromCharCode(...new Uint8Array(data)))};
+ const db=Function(...Object.keys(dbEnv),dbCode+'\nreturn {getImageByUUID,getImageBlobByUUID};')(...Object.values(dbEnv));
+ const canvas=document.createElement('canvas');canvas.width=160;canvas.height=100;const ctx=canvas.getContext('2d');
+ const gradient=ctx.createLinearGradient(0,0,160,100);gradient.addColorStop(0,'#459cce');gradient.addColorStop(1,'#ddb97a');ctx.fillStyle=gradient;ctx.fillRect(0,0,160,100);
+ for(const mime of ['image/jpeg','image/webp','image/png']){
+  const blob=await new Promise(resolve=>canvas.toBlob(resolve,mime));cached=await blob.arrayBuffer();
+  const url=await db.getImageByUUID('legacy-without-format');const restored=await db.getImageBlobByUUID('legacy-without-format');
+  check(url.startsWith('data:'+mime+';base64,')&&restored.type===mime,mime+' 旧缓存读取保留真实格式');
+  const img=new Image();img.src=url;await img.decode();img.alt=mime;document.querySelector('#images').append(img);
+  check(img.naturalWidth===160&&img.naturalHeight===100,mime+' 在浏览器实际解码成功');
+ }
+ document.querySelector('#status').textContent=checks.length+' 项通过 · 无真实 API 请求';
+ window.upstreamRegression={passed:true,checks};
+}catch(error){document.querySelector('#status').textContent=error.stack;window.upstreamRegression={passed:false,error:error.stack,checks};}
+</script>
+</html>

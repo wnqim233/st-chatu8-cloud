@@ -1,5 +1,21 @@
 # 验证记录
 
+## cloud.12 选择性移植上游 3.1.6（2026-10-16）
+
+- `node --test tests/*.test.mjs`：57 项通过。新增检查正则捕获组、原字面规则、正文边界、旧缓存 MIME、thinking 分段过滤、停止流式后的缓存查询失效、云端排队超过三分钟不提前超时、跨聊天仍接收已提交任务结果，以及按钮异常收尾。保留 LoRA、币种、零小费、迁移、FIFO 和付费请求去重回归。
+- `node scripts/check.mjs`：24 个 JavaScript 文件语法通过；86 个上游文件逐字节相同，仅原来声明的 6 个上游文件有修改；5 个重点复用模块原样保留，聊天上下文模块仍仅规范化存储键；10 个选择性移植模块按新增前后指纹记录核验。
+- `node scripts/upstream-browser-smoke.mjs`：隔离的 Chrome 中执行打包文件的实际函数，13 项断言通过。前置说明与 thinking 中重复正文时，图片仍只写入 `<content>` 正文内；普通正文、保存与重绘调用正常。没有 format 字段的 JPEG/WebP/PNG 缓存读取为正确 MIME，并在浏览器中实际解码；已查看结果截图。
+- `node scripts/settings-save-smoke.mjs`：真实输入、FileReader 与 IndexedDB 下，LoRA 修改／删除／清空、生成前自动保存、参数错误或持久化失败阻止提交、刷新恢复及旧配置导入通过。
+- `node scripts/mobile-settings-smoke.mjs`：完整设置弹窗在 390 × 844、360 × 640、844 × 390 三种尺寸通过；JSON 输入不被遮挡，无横向溢出，保存精确保留 LoRA，错误输入不覆盖已保存值。已查看手机截图。
+- `node scripts/buzz-smoke.mjs`：四种币种的选择、自动保存、预估及模拟实际提交一致，Creator/Civitai 小费均为 0；IndexedDB 刷新恢复、桌面及手机布局通过。
+- `node scripts/queue-smoke.mjs`：真实 IndexedDB 下，五次点击形成两个活跃任务和三个等待任务；取消等待、任一空位补位、刷新续跑和图片缓存通过，没有重复的生成 POST。
+
+一次全量复跑在 Windows 临时目录清理阶段遇到 `ENOTEMPTY`，没有功能断言失败；未改代码再次运行后 57 项全部通过。
+
+本次所有生图接口均为模拟，未发送真实付费请求；浏览器验证在独立本地测试页进行，未在用户实际酒馆、手机或个人世界书中安装联调。打包与发布使用这些已测试文件。结果与截图保存在本地 `test-results/`，不放入发布包。
+
+开发环境的 npm 启动脚本不可用时，可直接使用以上 `node` 命令；打包命令为 `python scripts/package.py`。浏览器检查先启动 `node scripts/preview.mjs`，再用独立 Chromium 配置目录开启调试端口 9234（设置与正文测试）或 9232（队列测试）。测试不会调用真实生图接口。
+
 ## cloud.11 关闭可选小费（2026-09-20）
 
 - 在线核对官方 OpenAPI：`WorkflowTips.creators` 与 `WorkflowTips.civitai` 均允许为 0，字段表示比例；`WorkflowCostTips` 返回实际小费 Buzz。

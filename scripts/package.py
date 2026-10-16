@@ -7,13 +7,15 @@ import zipfile
 root = Path(__file__).resolve().parents[1]
 dist = root / 'dist'
 dist.mkdir(exist_ok=True)
-target = dist / 'st-chatu8-cloud-3.1.0-cloud11.zip'
-excluded = {'.git', '.agents', '.codex', 'backups', 'dist', 'node_modules', 'test-results', '__pycache__'}
+version = json.loads((root / 'package.json').read_text(encoding='utf-8'))['version']
+archive_version = version.replace('cloud.', 'cloud')
+target = dist / f'st-chatu8-cloud-{archive_version}.zip'
+excluded = {'.git', '.agents', '.codex', 'backups', 'dist', 'node_modules', 'test-results', '__pycache__', 'chat-memory'}
 entries = []
 with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as archive:
     for file in sorted(root.rglob('*')):
         rel = file.relative_to(root)
-        if not file.is_file() or any(part in excluded for part in rel.parts) or file.name == '.env':
+        if not file.is_file() or any(part in excluded for part in rel.parts) or file.name == '.env' or file.name.startswith('.env.'):
             continue
         if rel.parts[0] in {'server', 'tests', 'scripts'}:
             continue
@@ -29,11 +31,11 @@ digest = hashlib.sha256(target.read_bytes()).hexdigest()
 (dist / (target.name + '.sha256')).write_text(f'{digest}  {target.name}\n')
 print(json.dumps({'archive': str(target), 'files': len(entries) + 1, 'bytes': target.stat().st_size, 'sha256': digest}, ensure_ascii=False, indent=2))
 
-source = dist / 'st-chatu8-cloud-3.1.0-cloud11-source.zip'
+source = dist / f'st-chatu8-cloud-{archive_version}-source.zip'
 with zipfile.ZipFile(source, 'w', zipfile.ZIP_DEFLATED) as archive:
     for file in sorted(root.rglob('*')):
         rel = file.relative_to(root)
-        if file.is_file() and not any(part in excluded for part in rel.parts) and file.name != '.env':
+        if file.is_file() and not any(part in excluded for part in rel.parts) and file.name != '.env' and not file.name.startswith('.env.'):
             archive.write(file, str(Path('st-chatu8-source') / rel))
 with zipfile.ZipFile(source) as archive:
     assert archive.testzip() is None

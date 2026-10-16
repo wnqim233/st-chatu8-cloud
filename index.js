@@ -1,4 +1,4 @@
-/* Modified by Codex for the workspace owner, 2026-09-19.
+/* Modified by Codex for the workspace owner, 2026-09-19; selected 3.1.6 fixes backported 2026-10-16.
  * Purpose: add WaveSpeed and Civitai backend hooks and settings; preserve upstream worldbook/LLM behavior.
  * Upstream: damoshen123/st-chatu8 @ 4e1e8f8a6cab1375d39eb806a292516dbb9c43be.
  * Licensed under the Aladdin Free Public License; see LICENSE and MODIFICATIONS.md.
@@ -3973,6 +3973,45 @@ var init_settingsSaveScheduler = __esm({
 // utils/database.js
 
 
+function formatToMimeType(format, isVideo = false) {
+  if (!format || typeof format !== "string") {
+    return isVideo ? "video/mp4" : "image/png";
+  }
+  const fmt = format.toLowerCase();
+  if (fmt.includes("webm")) return "video/webm";
+  if (fmt.includes("mp4") || fmt.includes("h264")) return "video/mp4";
+  if (fmt.includes("jpeg") || fmt.includes("jpg")) return "image/jpeg";
+  if (fmt.includes("png")) return "image/png";
+  if (fmt.includes("webp")) return "image/webp";
+  if (fmt.includes("gif")) return "image/gif";
+  if (fmt.startsWith("video/")) return fmt;
+  if (fmt.startsWith("image/")) return fmt;
+  return isVideo ? "video/mp4" : "image/png";
+}
+function detectMimeFromBuffer(buffer, isVideo = false) {
+  if (!buffer) return isVideo ? "video/mp4" : "image/png";
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  if (bytes.length < 4) return isVideo ? "video/mp4" : "image/png";
+  if (bytes[0] === 26 && bytes[1] === 69 && bytes[2] === 223 && bytes[3] === 163) {
+    return "video/webm";
+  }
+  if (bytes.length >= 8 && bytes[4] === 102 && bytes[5] === 116 && bytes[6] === 121 && bytes[7] === 112) {
+    return "video/mp4";
+  }
+  if (bytes.length >= 8 && bytes[0] === 137 && bytes[1] === 80 && bytes[2] === 78 && bytes[3] === 71 && bytes[4] === 13 && bytes[5] === 10 && bytes[6] === 26 && bytes[7] === 10) {
+    return "image/png";
+  }
+  if (bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) {
+    return "image/jpeg";
+  }
+  if (bytes[0] === 71 && bytes[1] === 73 && bytes[2] === 70) {
+    return "image/gif";
+  }
+  if (bytes.length >= 12 && bytes[0] === 82 && bytes[1] === 73 && bytes[2] === 70 && bytes[3] === 70 && bytes[8] === 87 && bytes[9] === 69 && bytes[10] === 66 && bytes[11] === 80) {
+    return "image/webp";
+  }
+  return isVideo ? "video/mp4" : "image/png";
+}
 function blobToBase64(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -4594,7 +4633,7 @@ async function getItemImg(tag, index = null) {
   } else if (imageEntry.source === "db" && imageEntry.uuid) {
     const imageData = await storeReadOnly(imageEntry.uuid);
     if (imageData && imageData.data) {
-      const mimeType = isVideo ? "video/mp4" : "image/png";
+      const mimeType = imageEntry.format ? formatToMimeType(imageEntry.format, isVideo) : detectMimeFromBuffer(imageData.data, isVideo);
       const mediaBase64 = `data:${mimeType};base64,` + arrayBufferToBase64(imageData.data);
       return [mediaBase64, change, finalIndex, isVideo, originalUrl, video, activeMode];
     }
@@ -4777,6 +4816,7 @@ async function setItemImg(tag, imgBase64, options = { format: "png" }) {
         thumbnail_path: thumbnailPath,
         date: newDate,
         isVideo,
+        format: uploadFormat || format || (isVideo ? "mp4" : "png"),
         originalUrl: originalUrl || "",
         size: base64ByteLength(base64Data),
         thumbnail_size: thumbnailSize,
@@ -4895,6 +4935,7 @@ async function setItemImg(tag, imgBase64, options = { format: "png" }) {
       thumbnail_uuid: thumbnailUUID,
       date: newDate,
       isVideo,
+      format: format || (isVideo ? "mp4" : "png"),
       originalUrl: originalUrl || "",
       size: imageBuffer.byteLength,
       thumbnail_size: thumbnailSize,
@@ -5270,7 +5311,9 @@ async function getItemBlob(tag, index = null) {
     const uuid = imageEntry.uuid;
     const imageData = await storeReadOnly(uuid);
     if (imageData && imageData.data) {
-      return new Blob([imageData.data], { type: "image/png" });
+      const isVideo = imageEntry.isVideo || false;
+      const mimeType = imageEntry.format ? formatToMimeType(imageEntry.format, isVideo) : detectMimeFromBuffer(imageData.data, isVideo);
+      return new Blob([imageData.data], { type: mimeType });
     }
   }
   return null;
@@ -5527,7 +5570,9 @@ async function getAllImages(md5ORtag) {
     const imagePromises = dbEntry.images.map(async (imageEntry) => {
       const imageData = await storeReadOnly(imageEntry.uuid);
       if (imageData && imageData.data) {
-        return "data:image/png;base64," + arrayBufferToBase64(imageData.data);
+        const isVideo = imageEntry.isVideo || false;
+        const mimeType = imageEntry.format ? formatToMimeType(imageEntry.format, isVideo) : detectMimeFromBuffer(imageData.data, isVideo);
+        return `data:${mimeType};base64,` + arrayBufferToBase64(imageData.data);
       }
       return null;
     });
@@ -5579,14 +5624,16 @@ async function getAllImageBlobs(md5ORtag) {
 async function getImageByUUID(uuid) {
   const imageData = await storeReadOnly(uuid);
   if (imageData && imageData.data) {
-    return "data:image/png;base64," + arrayBufferToBase64(imageData.data);
+    const mimeType = detectMimeFromBuffer(imageData.data);
+    return `data:${mimeType};base64,` + arrayBufferToBase64(imageData.data);
   }
   return null;
 }
 async function getImageBlobByUUID(uuid) {
   const imageData = await storeReadOnly(uuid);
   if (imageData && imageData.data) {
-    return new Blob([imageData.data], { type: "image/png" });
+    const mimeType = detectMimeFromBuffer(imageData.data);
+    return new Blob([imageData.data], { type: mimeType });
   }
   const serverStorage = extension_settings[extensionName].jiuguanStorage || {};
   for (const md5 in serverStorage) {
@@ -9277,203 +9324,232 @@ function safeEvaluateIf(condition, haystack, ctxLabel = "") {
     return false;
   }
 }
-async function prompt_replace(originalPrompt, other_prompt = "") {
-  const prompt_replace_id = extension_settings3[extensionName].prompt_replace_id;
-  const prompt_replace_texts = extension_settings3[extensionName].prompt_replace;
-  const rulesText = prompt_replace_texts?.[prompt_replace_id]?.text ?? "";
-  addLog(`\u539F\u59CB Prompt (\u7528\u4E8E\u66FF\u6362): ${originalPrompt}`);
-  if (rulesText.trim() === "") {
-    addLog(`\u65E0\u6709\u6548\u66FF\u6362\u89C4\u5219\uFF0C\u8FD4\u56DE\u539F\u59CB Prompt\u3002`);
+function parseReWrapper(str) {
+  if (typeof str !== "string") return { isRe: false, content: str };
+  const trimmed = str.trim();
+  const match = trimmed.match(/^re\s*\(([\s\S]*)\)$/i);
+  if (!match) return { isRe: false, content: str };
+  return { isRe: true, content: match[1] };
+}
+function splitRuleLine(line) {
+  if (!line || typeof line !== "string") return null;
+  const trimmed = line.trim();
+  if (!trimmed) return null;
+  if (/^re\s*\(/i.test(trimmed)) {
+    let parenDepth = 0;
+    let inBracket = false;
+    let reEndIndex = -1;
+    for (let i = 0; i < trimmed.length; i++) {
+      const ch = trimmed[i];
+      if (ch === "\\") {
+        i++;
+        continue;
+      }
+      if (inBracket) {
+        if (ch === "]") inBracket = false;
+        continue;
+      }
+      if (ch === "[") {
+        inBracket = true;
+      } else if (ch === "(") {
+        parenDepth++;
+      } else if (ch === ")") {
+        parenDepth--;
+        if (parenDepth === 0) {
+          reEndIndex = i;
+          break;
+        }
+      }
+    }
+    if (reEndIndex !== -1) {
+      const equalIndex = trimmed.indexOf("=", reEndIndex + 1);
+      if (equalIndex !== -1) {
+        const trigger2 = trimmed.substring(0, equalIndex).trim();
+        const ruleContent2 = trimmed.substring(equalIndex + 1).trim();
+        return [trigger2, ruleContent2];
+      }
+    }
+  }
+  const firstEqual = trimmed.indexOf("=");
+  if (firstEqual === -1) return null;
+  const trigger = trimmed.substring(0, firstEqual).trim();
+  const ruleContent = trimmed.substring(firstEqual + 1).trim();
+  return [trigger, ruleContent];
+}
+function applyPromptReplaceRules(originalPrompt, secondArg, rulesText, isBanana, isCharacterMode = false) {
+  const logPrefix = isBanana ? isCharacterMode ? "[Banana] \u5206\u89D2\u8272 " : "[Banana] " : isCharacterMode ? "\u5206\u89D2\u8272 " : "";
+  addLog(`${logPrefix}\u539F\u59CB Prompt: ${originalPrompt}`);
+  if (!rulesText || rulesText.trim() === "") {
+    addLog(`${logPrefix}\u65E0\u6709\u6548\u66FF\u6362\u89C4\u5219\uFF0C\u8FD4\u56DE\u539F\u59CB Prompt\u3002`);
+    if (isCharacterMode) {
+      return originalPrompt;
+    }
     return {
       modifiedPrompt: originalPrompt,
       insertions: { "\u524D\u7F6E\u524D": "", "\u524D\u7F6E\u540E": "", "\u540E\u7F6E\u524D": "", "\u540E\u7F6E\u540E": "", "\u6700\u540E\u7F6E": "" }
     };
   }
-  addLog(`\u4F7F\u7528\u7684\u66FF\u6362\u89C4\u5219\u5185\u5BB9:
+  if (isCharacterMode && !originalPrompt) {
+    return originalPrompt;
+  }
+  addLog(`${logPrefix}\u4F7F\u7528\u7684\u66FF\u6362\u89C4\u5219\u5185\u5BB9:
 ${rulesText}`);
   const insertions = { "\u524D\u7F6E\u524D": [], "\u524D\u7F6E\u540E": [], "\u540E\u7F6E\u524D": [], "\u540E\u7F6E\u540E": [], "\u6700\u540E\u7F6E": [] };
   let modifiedPrompt = originalPrompt;
-  let allPrompts = originalPrompt + other_prompt;
-  const rules = rulesText.split("\n");
-  for (const line of rules) {
-    if (line.trim() === "") continue;
-    const parts = line.split("=");
-    if (parts.length < 2) continue;
-    const trigger = parts[0].trim();
-    if (!trigger) continue;
-    const ruleContent = parts.slice(1).join("=");
-    if (!ruleContent.includes("|")) continue;
+  const fullContext = isCharacterMode ? typeof secondArg === "string" && secondArg.length > 0 ? secondArg : originalPrompt : "";
+  const allPrompts = isCharacterMode ? "" : originalPrompt + (typeof secondArg === "string" ? secondArg : "");
+  const lines = rulesText.split("\n");
+  for (const line of lines) {
+    const splitRes = splitRuleLine(line);
+    if (!splitRes) continue;
+    const [triggerPart, ruleContent] = splitRes;
+    if (!triggerPart || !ruleContent || !ruleContent.includes("|")) continue;
     const pipeIndex = ruleContent.indexOf("|");
     const type = ruleContent.substring(0, pipeIndex).trim();
-    const value = ruleContent.substring(pipeIndex + 1).trim();
-    const { value: realValue, condition } = extractIfCondition(value);
-    const triggers = trigger.split("|").map((t) => t.trim()).filter(Boolean);
-    for (const t of triggers) {
-      if (allPrompts.toLowerCase().includes(t.toLowerCase())) {
-        if (condition && !safeEvaluateIf(condition, allPrompts, "")) {
-          addLog(`@if \u672A\u901A\u8FC7\uFF0C\u8DF3\u8FC7\u89C4\u5219: "${t}" \u6761\u4EF6="${condition}"`);
-          continue;
+    const rawValue = ruleContent.substring(pipeIndex + 1);
+    const { value: realValue, condition } = extractIfCondition(rawValue);
+    const triggerRe = parseReWrapper(triggerPart);
+    const valRe = parseReWrapper(realValue);
+    if (triggerRe.isRe) {
+      let regex = null;
+      try {
+        regex = new RegExp(triggerRe.content, "gi");
+      } catch (e) {
+        console.warn(`${logPrefix}\u975E\u6CD5\u6B63\u5219\u8868\u8FBE\u5F0F "${triggerRe.content}"\uFF0C\u964D\u7EA7\u4E3A\u5B57\u9762\u91CF\u5339\u914D:`, e);
+        regex = new RegExp(triggerRe.content.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+      }
+      regex.lastIndex = 0;
+      if (isCharacterMode) {
+        if ((type === "\u66FF\u6362" || type === "\u66FF\u6362\u5206\u89D2\u8272") && regex.test(modifiedPrompt)) {
+          regex.lastIndex = 0;
+          if (condition && !safeEvaluateIf(condition, fullContext, logPrefix)) {
+            addLog(`${logPrefix}@if \u672A\u901A\u8FC7\uFF0C\u8DF3\u8FC7\u89C4\u5219: "${triggerPart}" \u6761\u4EF6="${condition}"`);
+            continue;
+          }
+          if (condition) addLog(`${logPrefix}@if \u901A\u8FC7: "${triggerPart}" \u6761\u4EF6="${condition}"`);
+          addLog(`${logPrefix}Prompt \u66FF\u6362 (\u6B63\u5219): "${triggerPart}" -> "${realValue}"`);
+          if (valRe.isRe) {
+            modifiedPrompt = modifiedPrompt.replace(regex, valRe.content);
+          } else {
+            modifiedPrompt = modifiedPrompt.replace(regex, () => valRe.content);
+          }
+          regex.lastIndex = 0;
         }
-        if (condition) addLog(`@if \u901A\u8FC7: "${t}" \u6761\u4EF6="${condition}"`);
-        if (type === "\u66FF\u6362") {
-          addLog(`Prompt \u66FF\u6362: "${t}" -> "${realValue}"`);
-          const regex = new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
-          modifiedPrompt = modifiedPrompt.replace(regex, realValue);
-        } else if (insertions.hasOwnProperty(type)) {
-          addLog(`\u53D1\u73B0\u63D2\u5165: \u7C7B\u578B="${type}", \u89E6\u53D1\u8BCD="${t}", \u5185\u5BB9="${realValue}"`);
-          insertions[type].push(realValue);
+      } else {
+        if (regex.test(allPrompts)) {
+          regex.lastIndex = 0;
+          if (condition && !safeEvaluateIf(condition, allPrompts, logPrefix)) {
+            addLog(`${logPrefix}@if \u672A\u901A\u8FC7\uFF0C\u8DF3\u8FC7\u89C4\u5219: "${triggerPart}" \u6761\u4EF6="${condition}"`);
+            continue;
+          }
+          if (condition) addLog(`${logPrefix}@if \u901A\u8FC7: "${triggerPart}" \u6761\u4EF6="${condition}"`);
+          if (type === "\u66FF\u6362") {
+            addLog(`${logPrefix}Prompt \u66FF\u6362 (\u6B63\u5219): "${triggerPart}" -> "${realValue}"`);
+            if (valRe.isRe) {
+              modifiedPrompt = modifiedPrompt.replace(regex, valRe.content);
+            } else {
+              modifiedPrompt = modifiedPrompt.replace(regex, () => valRe.content);
+            }
+            regex.lastIndex = 0;
+          } else if (insertions.hasOwnProperty(type)) {
+            regex.lastIndex = 0;
+            const matches = [...allPrompts.matchAll(regex)];
+            regex.lastIndex = 0;
+            for (const match of matches) {
+              let itemContent = valRe.content;
+              if (valRe.isRe) {
+                itemContent = valRe.content.replace(/\$([0-9]+|&)/g, (full, g) => {
+                  if (g === "&" || g === "0") return match[0] || "";
+                  const idx = parseInt(g, 10);
+                  return match[idx] !== void 0 ? match[idx] : full;
+                });
+              }
+              addLog(`${logPrefix}\u53D1\u73B0\u63D2\u5165 (\u6B63\u5219\u5C55\u5F00): \u7C7B\u578B="${type}", \u5339\u914D="${match[0]}", \u5185\u5BB9="${itemContent}"`);
+              insertions[type].push(itemContent);
+            }
+          }
+        }
+      }
+      regex.lastIndex = 0;
+    } else {
+      const triggers = triggerPart.split("|").map((t) => t.trim()).filter(Boolean);
+      for (const t of triggers) {
+        if (isCharacterMode) {
+          if ((type === "\u66FF\u6362" || type === "\u66FF\u6362\u5206\u89D2\u8272") && modifiedPrompt.toLowerCase().includes(t.toLowerCase())) {
+            if (condition && !safeEvaluateIf(condition, fullContext, logPrefix)) {
+              addLog(`${logPrefix}@if \u672A\u901A\u8FC7\uFF0C\u8DF3\u8FC7\u89C4\u5219: "${t}" \u6761\u4EF6="${condition}"`);
+              continue;
+            }
+            if (condition) addLog(`${logPrefix}@if \u901A\u8FC7: "${t}" \u6761\u4EF6="${condition}"`);
+            addLog(`${logPrefix}Prompt \u66FF\u6362: "${t}" -> "${realValue}"`);
+            const regex = new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+            if (valRe.isRe) {
+              modifiedPrompt = modifiedPrompt.replace(regex, valRe.content);
+            } else {
+              modifiedPrompt = modifiedPrompt.replace(regex, () => valRe.content);
+            }
+          }
+        } else {
+          if (allPrompts.toLowerCase().includes(t.toLowerCase())) {
+            if (condition && !safeEvaluateIf(condition, allPrompts, logPrefix)) {
+              addLog(`${logPrefix}@if \u672A\u901A\u8FC7\uFF0C\u8DF3\u8FC7\u89C4\u5219: "${t}" \u6761\u4EF6="${condition}"`);
+              continue;
+            }
+            if (condition) addLog(`${logPrefix}@if \u901A\u8FC7: "${t}" \u6761\u4EF6="${condition}"`);
+            if (type === "\u66FF\u6362") {
+              addLog(`${logPrefix}Prompt \u66FF\u6362: "${t}" -> "${realValue}"`);
+              const regex = new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+              if (valRe.isRe) {
+                modifiedPrompt = modifiedPrompt.replace(regex, valRe.content);
+              } else {
+                modifiedPrompt = modifiedPrompt.replace(regex, () => valRe.content);
+              }
+            } else if (insertions.hasOwnProperty(type)) {
+              addLog(`${logPrefix}\u53D1\u73B0\u63D2\u5165: \u7C7B\u578B="${type}", \u89E6\u53D1\u8BCD="${t}", \u5185\u5BB9="${realValue}"`);
+              insertions[type].push(realValue);
+            }
+          }
         }
       }
     }
+  }
+  if (isCharacterMode) {
+    addLog(`${logPrefix}\u66FF\u6362\u540E\u7684 Prompt: ${modifiedPrompt}`);
+    return modifiedPrompt;
   }
   const finalInsertions = {};
   for (const key in insertions) {
     finalInsertions[key] = insertions[key].join(", ");
   }
-  addLog(`\u66FF\u6362/\u5220\u9664\u540E\u7684 Prompt: ${modifiedPrompt}`);
-  addLog(`\u89E3\u6790\u51FA\u7684\u63D2\u5165\u5185\u5BB9: ${JSON.stringify(finalInsertions)}`);
+  addLog(`${logPrefix}\u66FF\u6362/\u5220\u9664\u540E\u7684 Prompt: ${modifiedPrompt}`);
+  addLog(`${logPrefix}\u89E3\u6790\u51FA\u7684\u63D2\u5165\u5185\u5BB9: ${JSON.stringify(finalInsertions)}`);
   return { modifiedPrompt, insertions: finalInsertions };
+}
+async function prompt_replace(originalPrompt, other_prompt = "") {
+  const prompt_replace_id = extension_settings3[extensionName].prompt_replace_id;
+  const prompt_replace_texts = extension_settings3[extensionName].prompt_replace;
+  const rulesText = prompt_replace_texts?.[prompt_replace_id]?.text ?? "";
+  return applyPromptReplaceRules(originalPrompt, other_prompt, rulesText, false, false);
 }
 async function prompt_replace_banana(originalPrompt, other_prompt = "") {
   const bananaSettings = extension_settings3[extensionName].banana || {};
   const prompt_replace_id = bananaSettings.prompt_replace_id || "\u9ED8\u8BA4";
   const prompt_replace_texts = bananaSettings.prompt_replace || {};
   const rulesText = prompt_replace_texts?.[prompt_replace_id]?.text ?? "";
-  addLog(`[Banana] \u539F\u59CB Prompt (\u7528\u4E8E\u66FF\u6362): ${originalPrompt}`);
-  if (rulesText.trim() === "") {
-    addLog(`[Banana] \u65E0\u6709\u6548\u66FF\u6362\u89C4\u5219\uFF0C\u8FD4\u56DE\u539F\u59CB Prompt\u3002`);
-    return {
-      modifiedPrompt: originalPrompt,
-      insertions: { "\u524D\u7F6E\u524D": "", "\u524D\u7F6E\u540E": "", "\u540E\u7F6E\u524D": "", "\u540E\u7F6E\u540E": "", "\u6700\u540E\u7F6E": "" }
-    };
-  }
-  addLog(`[Banana] \u4F7F\u7528\u7684\u66FF\u6362\u89C4\u5219\u5185\u5BB9:
-${rulesText}`);
-  const insertions = { "\u524D\u7F6E\u524D": [], "\u524D\u7F6E\u540E": [], "\u540E\u7F6E\u524D": [], "\u540E\u7F6E\u540E": [], "\u6700\u540E\u7F6E": [] };
-  let modifiedPrompt = originalPrompt;
-  let allPrompts = originalPrompt + other_prompt;
-  const rules = rulesText.split("\n");
-  for (const line of rules) {
-    if (line.trim() === "") continue;
-    const parts = line.split("=");
-    if (parts.length < 2) continue;
-    const trigger = parts[0].trim();
-    if (!trigger) continue;
-    const ruleContent = parts.slice(1).join("=");
-    if (!ruleContent.includes("|")) continue;
-    const pipeIndex = ruleContent.indexOf("|");
-    const type = ruleContent.substring(0, pipeIndex).trim();
-    const value = ruleContent.substring(pipeIndex + 1).trim();
-    const { value: realValue, condition } = extractIfCondition(value);
-    const triggers = trigger.split("|").map((t) => t.trim()).filter(Boolean);
-    for (const t of triggers) {
-      if (allPrompts.toLowerCase().includes(t.toLowerCase())) {
-        if (condition && !safeEvaluateIf(condition, allPrompts, "[Banana] ")) {
-          addLog(`[Banana] @if \u672A\u901A\u8FC7\uFF0C\u8DF3\u8FC7\u89C4\u5219: "${t}" \u6761\u4EF6="${condition}"`);
-          continue;
-        }
-        if (condition) addLog(`[Banana] @if \u901A\u8FC7: "${t}" \u6761\u4EF6="${condition}"`);
-        if (type === "\u66FF\u6362") {
-          addLog(`[Banana] Prompt \u66FF\u6362: "${t}" -> "${realValue}"`);
-          const regex = new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
-          modifiedPrompt = modifiedPrompt.replace(regex, realValue);
-        } else if (insertions.hasOwnProperty(type)) {
-          addLog(`[Banana] \u53D1\u73B0\u63D2\u5165: \u7C7B\u578B="${type}", \u89E6\u53D1\u8BCD="${t}", \u5185\u5BB9="${realValue}"`);
-          insertions[type].push(realValue);
-        }
-      }
-    }
-  }
-  const finalInsertions = {};
-  for (const key in insertions) {
-    finalInsertions[key] = insertions[key].join(", ");
-  }
-  addLog(`[Banana] \u66FF\u6362/\u5220\u9664\u540E\u7684 Prompt: ${modifiedPrompt}`);
-  addLog(`[Banana] \u89E3\u6790\u51FA\u7684\u63D2\u5165\u5185\u5BB9: ${JSON.stringify(finalInsertions)}`);
-  return { modifiedPrompt, insertions: finalInsertions };
+  return applyPromptReplaceRules(originalPrompt, other_prompt, rulesText, true, false);
+}
+function prompt_replace_for_character(originalPrompt, fullContext) {
+  const prompt_replace_id = extension_settings3[extensionName].prompt_replace_id;
+  const prompt_replace_texts = extension_settings3[extensionName].prompt_replace;
+  const rulesText = prompt_replace_texts?.[prompt_replace_id]?.text ?? "";
+  return applyPromptReplaceRules(originalPrompt, fullContext, rulesText, false, true);
 }
 function prompt_replace_banana_for_character(originalPrompt, fullContext) {
   const bananaSettings = extension_settings3[extensionName].banana || {};
   const prompt_replace_id = bananaSettings.prompt_replace_id || "\u9ED8\u8BA4";
   const prompt_replace_texts = bananaSettings.prompt_replace || {};
   const rulesText = prompt_replace_texts?.[prompt_replace_id]?.text ?? "";
-  addLog(`[Banana] \u539F\u59CB\u89D2\u8272 Prompt (\u7528\u4E8E\u5206\u89D2\u8272\u66FF\u6362): ${originalPrompt}`);
-  if (rulesText.trim() === "" || !originalPrompt) {
-    addLog(`[Banana] \u65E0\u6709\u6548\u66FF\u6362\u89C4\u5219\u6216\u7A7APrompt\uFF0C\u8FD4\u56DE\u539F\u59CBPrompt\u3002`);
-    return originalPrompt;
-  }
-  let modifiedPrompt = originalPrompt;
-  const rules = rulesText.split("\n");
-  for (const line of rules) {
-    if (line.trim() === "") continue;
-    const parts = line.split("=");
-    if (parts.length < 2) continue;
-    const trigger = parts[0].trim();
-    if (!trigger) continue;
-    const ruleContent = parts.slice(1).join("=");
-    if (!ruleContent.includes("|")) continue;
-    const pipeIndex = ruleContent.indexOf("|");
-    const type = ruleContent.substring(0, pipeIndex).trim();
-    const value = ruleContent.substring(pipeIndex + 1);
-    const { value: realValue, condition } = extractIfCondition(value);
-    const triggers = trigger.split("|").map((t) => t.trim()).filter(Boolean);
-    for (const t of triggers) {
-      if ((type === "\u66FF\u6362\u5206\u89D2\u8272" || type === "\u66FF\u6362") && modifiedPrompt.toLowerCase().includes(t.toLowerCase())) {
-        const ifHaystack = typeof fullContext === "string" && fullContext.length > 0 ? fullContext : modifiedPrompt;
-        if (condition && !safeEvaluateIf(condition, ifHaystack, "[Banana] \u5206\u89D2\u8272 ")) {
-          addLog(`[Banana] \u5206\u89D2\u8272 @if \u672A\u901A\u8FC7\uFF0C\u8DF3\u8FC7\u89C4\u5219: "${t}" \u6761\u4EF6="${condition}"`);
-          continue;
-        }
-        addLog(`[Banana] \u5206\u89D2\u8272 Prompt \u66FF\u6362: "${t}" -> "${realValue}"`);
-        const regex = new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
-        modifiedPrompt = modifiedPrompt.replace(regex, realValue);
-      }
-    }
-  }
-  addLog(`[Banana] \u5206\u89D2\u8272\u66FF\u6362\u540E\u7684 Prompt: ${modifiedPrompt}`);
-  return modifiedPrompt;
-}
-function prompt_replace_for_character(originalPrompt, fullContext) {
-  const prompt_replace_id = extension_settings3[extensionName].prompt_replace_id;
-  const prompt_replace_texts = extension_settings3[extensionName].prompt_replace;
-  const rulesText = prompt_replace_texts?.[prompt_replace_id]?.text ?? "";
-  addLog(`\u539F\u59CB\u89D2\u8272 Prompt (\u7528\u4E8E\u5206\u89D2\u8272\u66FF\u6362): ${originalPrompt}`);
-  if (rulesText.trim() === "" || !originalPrompt) {
-    addLog(`\u65E0\u6709\u6548\u66FF\u6362\u89C4\u5219\u6216\u7A7APrompt\uFF0C\u8FD4\u56DE\u539F\u59CBPrompt\u3002`);
-    return originalPrompt;
-  }
-  addLog(`\u4F7F\u7528\u7684\u66FF\u6362\u89C4\u5219\u5185\u5BB9 (\u5206\u89D2\u8272):
-${rulesText}`);
-  let modifiedPrompt = originalPrompt;
-  const rules = rulesText.split("\n");
-  for (const line of rules) {
-    if (line.trim() === "") continue;
-    const parts = line.split("=");
-    if (parts.length < 2) continue;
-    const trigger = parts[0].trim();
-    if (!trigger) continue;
-    const ruleContent = parts.slice(1).join("=");
-    if (!ruleContent.includes("|")) continue;
-    const pipeIndex = ruleContent.indexOf("|");
-    const type = ruleContent.substring(0, pipeIndex).trim();
-    const value = ruleContent.substring(pipeIndex + 1);
-    const { value: realValue, condition } = extractIfCondition(value);
-    const triggers = trigger.split("|").map((t) => t.trim()).filter(Boolean);
-    for (const t of triggers) {
-      if ((type === "\u66FF\u6362\u5206\u89D2\u8272" || type === "\u66FF\u6362") && modifiedPrompt.toLowerCase().includes(t.toLowerCase())) {
-        const ifHaystack = typeof fullContext === "string" && fullContext.length > 0 ? fullContext : modifiedPrompt;
-        if (condition && !safeEvaluateIf(condition, ifHaystack, "\u5206\u89D2\u8272 ")) {
-          addLog(`\u5206\u89D2\u8272 @if \u672A\u901A\u8FC7\uFF0C\u8DF3\u8FC7\u89C4\u5219: "${t}" \u6761\u4EF6="${condition}"`);
-          continue;
-        }
-        addLog(`\u5206\u89D2\u8272 Prompt \u66FF\u6362: "${t}" -> "${realValue}"`);
-        const regex = new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
-        modifiedPrompt = modifiedPrompt.replace(regex, realValue);
-      }
-    }
-  }
-  addLog(`\u5206\u89D2\u8272\u66FF\u6362\u540E\u7684 Prompt: ${modifiedPrompt}`);
-  return modifiedPrompt;
+  return applyPromptReplaceRules(originalPrompt, fullContext, rulesText, true, true);
 }
 function getRequestHeaders(token2) {
   return {
@@ -15945,6 +16021,11 @@ function removeThinkingText(text) {
   if (result !== beforeCommentRemoval) {
     console.log("[imageInserter] Removed HTML comments, length:", beforeCommentRemoval.length, "-> new length:", result.length);
   }
+  const beforeContentRemoval = result;
+  result = result.replace(/^[\s\S]*?<content>\s*/i, "");
+  if (result !== beforeContentRemoval) {
+    console.log("[imageInserter] Removed text before <content>, length:", beforeContentRemoval.length, "-> new length:", result.length);
+  }
   const beforeOuterRemoval = result;
   result = result.replace(
     /(?:<font[^>]*>\[[^\]]*\]<\/font>\s*)?(?:<Tag_think>[\s\S]*?<\/Tag_think>\s*)?<image>[\s\S]*?<\/image>/g,
@@ -15979,6 +16060,11 @@ function removeThinkingTextOnly(text) {
   result = result.replace(/<!--[\s\S]*?-->/g, "");
   if (result !== beforeCommentRemoval) {
     console.log("[imageInserter] Removed HTML comments, length:", beforeCommentRemoval.length, "-> new length:", result.length);
+  }
+  const beforeContentRemoval = result;
+  result = result.replace(/^[\s\S]*?<content>\s*/i, "");
+  if (result !== beforeContentRemoval) {
+    console.log("[imageInserter] Removed text before <content> only, length:", beforeContentRemoval.length, "-> new length:", result.length);
   }
   return result;
 }
@@ -16648,11 +16734,18 @@ async function insertImagesIntoElement(rootElement, images) {
     if (matchResult) {
       let correctEndIndex = matchResult.endIndex;
       const matchedLine = matchResult.matchedLine;
-      const searchStartOffset = Math.max(thinkingEndOffsetDOM, firstDivEndOffset > 0 ? firstDivEndOffset : 0);
+      let baseOffsetDOM = thinkingEndOffsetDOM;
+      const textAfterThinkingDOM = logicalText.substring(thinkingEndOffsetDOM);
+      const contentMatchDOM = textAfterThinkingDOM.match(/^[\s\S]*?<content>\s*/i);
+      if (contentMatchDOM) {
+        baseOffsetDOM = thinkingEndOffsetDOM + contentMatchDOM[0].length;
+      }
+      const searchStartOffset = Math.max(baseOffsetDOM, firstDivEndOffset > 0 ? firstDivEndOffset : 0);
       let lineIndexInOriginal = logicalText.indexOf(matchedLine, searchStartOffset);
-      if (lineIndexInOriginal === -1) {
+      if (lineIndexInOriginal === -1 && !contentMatchDOM) {
         lineIndexInOriginal = logicalText.indexOf(matchedLine);
       }
+      if (lineIndexInOriginal === -1 && contentMatchDOM) continue;
       if (lineIndexInOriginal !== -1) {
         correctEndIndex = lineIndexInOriginal + matchedLine.length;
         console.log(`[insertImagesIntoElement] Remapped endIndex: ${matchResult.endIndex} -> ${correctEndIndex}`);
@@ -17071,18 +17164,26 @@ async function saveImageGroup(images, logicalText, el) {
             }
             console.log("[imageInserter] insertOriginalText: thinkingEndOffset =", thinkingEndOffset);
           }
+          let searchStartOffset = thinkingEndOffset;
+          const textAfterThinking = mes.substring(thinkingEndOffset);
+          const contentMatch = textAfterThinking.match(/^[\s\S]*?<content>\s*/i);
+          if (contentMatch) {
+            searchStartOffset = thinkingEndOffset + contentMatch[0].length;
+            console.log("[imageInserter] insertOriginalText: searchStartOffset (with <content>) =", searchStartOffset);
+          }
           const matchResults = [];
           for (const img of allImages) {
             const matchResult = fuzzyMatchLine(mesForMatch, img.regex, 0.5);
             if (matchResult) {
               let correctEndIndex = matchResult.endIndex;
               const matchedLine = matchResult.matchedLine;
-              const lineIndexInOriginal = mes.indexOf(matchedLine, thinkingEndOffset);
+              const lineIndexInOriginal = mes.indexOf(matchedLine, searchStartOffset);
               if (lineIndexInOriginal !== -1) {
                 correctEndIndex = lineIndexInOriginal + matchedLine.length;
-                console.log(`[imageInserter] insertOriginalText: Remapped endIndex: ${matchResult.endIndex} -> ${correctEndIndex} (searchFrom: ${thinkingEndOffset})`);
+                console.log(`[imageInserter] insertOriginalText: Remapped endIndex: ${matchResult.endIndex} -> ${correctEndIndex} (searchFrom: ${searchStartOffset})`);
               } else {
-                const fallbackIndex = mes.indexOf(matchedLine);
+                const fallbackIndex = contentMatch ? -1 : mes.indexOf(matchedLine);
+                if (contentMatch && fallbackIndex === -1) continue;
                 if (fallbackIndex !== -1) {
                   correctEndIndex = fallbackIndex + matchedLine.length;
                   console.warn(`[imageInserter] insertOriginalText: Fallback full search, endIndex: ${correctEndIndex}`);
@@ -38400,11 +38501,11 @@ function showUserDemandPopup2(options = {}) {
     setTimeout(() => textarea.focus(), 100);
   });
 }
-async function handlePromptRequest(el, gestureId) {
-  return processImageLikeRequest(el, gestureId, "image_gen", "\u6B63\u6587\u56FE\u7247\u751F\u6210", LLM_IMAGE_GEN);
+async function handlePromptRequest(el, gestureId, options = {}) {
+  return processImageLikeRequest(el, gestureId, "image_gen", "\u6B63\u6587\u56FE\u7247\u751F\u6210", LLM_IMAGE_GEN, options);
 }
-async function handleVisualMatPrepRequest(el, gestureId) {
-  return processImageLikeRequest(el, gestureId, "visual_mat_prep", "\u89C6\u6750\u51C6\u5907", LLM_VISUAL_MAT_PREP);
+async function handleVisualMatPrepRequest(el, gestureId, options = {}) {
+  return processImageLikeRequest(el, gestureId, "visual_mat_prep", "\u89C6\u6750\u51C6\u5907", LLM_VISUAL_MAT_PREP, options);
 }
 function extractVideosXmlContent(text) {
   if (!text || typeof text !== "string") return "";
@@ -38740,13 +38841,14 @@ async function handleImageToVideoGen(targetEl, imgElement, button, dialogContext
     toastr.error("\u56FE\u751F\u89C6\u9891\u8BF7\u6C42\u5931\u8D25: " + (err.message || err));
   }
 }
-async function processImageLikeRequest(el, gestureId, requestType, title, llmFunction) {
+async function processImageLikeRequest(el, gestureId, requestType, title, llmFunction, options = {}) {
   const mainTimer = debugTimer(`promptReq.${requestType}`, `${title}\u6838\u5FC3\u6D41\u7A0B`);
   debugMilestone(requestType, `\u5F00\u59CB\u5904\u7406${title}\u8BF7\u6C42`);
   debugLog(`promptReq.${requestType}`, "\u8BF7\u6C42\u521D\u59CB\u5316", {
     gestureId,
     \u76EE\u6807\u5143\u7D20: el?.className || el?.tagName,
-    \u529F\u80FD\u8BF4\u660E: `\u5904\u7406\u624B\u52BF\u8BC6\u522B\u540E\u7684${title}\u8BF7\u6C42`
+    \u529F\u80FD\u8BF4\u660E: `\u5904\u7406\u624B\u52BF\u8BC6\u522B\u540E\u7684${title}\u8BF7\u6C42`,
+    \u89E6\u53D1\u6765\u6E90: options?.source || "manual"
   });
   let isDemandEnabled = false;
   let defaultDemand = "";
@@ -38766,6 +38868,14 @@ async function processImageLikeRequest(el, gestureId, requestType, title, llmFun
   } else {
     isDemandEnabled = extension_settings40[extensionName]?.imageGenDemandEnabled ?? false;
     defaultDemand = extension_settings40[extensionName]?.defaultImageDemand || "";
+  }
+  const isAutoTrigger = options?.source === "auto" || options?.isAuto === true || options?.skipDemandPopup === true;
+  if (isAutoTrigger) {
+    debugBranch(requestType, "\u81EA\u52A8\u89E6\u53D1\uFF0C\u8DF3\u8FC7\u7528\u6237\u9700\u6C42\u5F39\u7A97", true, {
+      source: options?.source || "auto",
+      skipDemandPopup: options?.skipDemandPopup
+    });
+    isDemandEnabled = false;
   }
   let userDemand = "";
   let userUploadedImages = [];
@@ -50509,6 +50619,13 @@ var init_comfyuiVideo = __esm({
 });
 
 // utils/iframe/generation.js
+function getImageResponseDocuments() {
+  const docs = [document];
+  for (const frame of document.querySelectorAll("iframe")) {
+    try { if (frame.contentDocument) docs.push(frame.contentDocument); } catch (_) {}
+  }
+  return docs;
+}
 
 
 async function _dataUrlToBlob(dataUrl) {
@@ -51581,52 +51698,63 @@ var init_generation = __esm({
         const imageResponseHandler = (responseData) => {
           if (responseData.id !== requestId) return;
           console.log("Image response:", responseData);
-          untrackImageResponseHandler(requestId, imageResponseHandler);
-          addLog(`\u56FE\u50CF\u54CD\u5E94\u76D1\u542C\u5668\u5DF2\u9500\u6BC1 (ID: ${requestId})`);
-          const { success, imageData, error, prompt: prompt2, change: change2, isVideo, originalUrl, video: video2, activeMode: activeMode2 } = responseData;
-          if (prompt2) stopGenerating(prompt2);
-          const docs2 = [document, ...Array.from(document.querySelectorAll("iframe")).map((f) => f.contentDocument).filter(Boolean)];
-          if (!success) {
-            addLog(`\u56FE\u50CF\u751F\u6210\u5931\u8D25 (ID: ${requestId}): ${error}`);
-            toastr.error(`\u751F\u6210\u5931\u8D25: ${error || "\u672A\u77E5\u9519\u8BEF"}`);
-          }
-          let totalMatchedSpans = 0;
-          docs2.forEach((doc) => {
-            const spans = doc.querySelectorAll(`span[data-request-id="${requestId}"]`);
-            const buttons = doc.querySelectorAll(`button[data-request-id="${requestId}"]`);
-            if (success && spans.length > 0) {
-              totalMatchedSpans += spans.length;
-              addLog(`${isVideo ? "\u89C6\u9891" : "\u56FE\u50CF"}\u751F\u6210\u6210\u529F (ID: ${requestId}), targeting ${spans.length} element(s).`);
-              spans.forEach((span) => {
-                const associatedButton = span.previousElementSibling;
-                const finalVideo = video2 || (associatedButton ? associatedButton.dataset.video : "");
-                const finalActiveMode = activeMode2 || (associatedButton ? associatedButton.dataset.activeMode : "");
-                if (associatedButton && associatedButton.matches(`button[data-request-id="${requestId}"]`)) {
-                  createAndShowImage(span, imageData, "Generated Image", associatedButton, change2, isVideo, originalUrl || "", finalVideo, finalActiveMode);
-                } else {
-                  createAndShowImage(span, imageData, "Generated Image", null, change2, isVideo, originalUrl || "", finalVideo, finalActiveMode);
-                }
-              });
+          try {
+            untrackImageResponseHandler(requestId, imageResponseHandler);
+            addLog(`\u56FE\u50CF\u54CD\u5E94\u76D1\u542C\u5668\u5DF2\u9500\u6BC1 (ID: ${requestId})`);
+            const { success, imageData, error, prompt: prompt2, change: change2, isVideo, originalUrl, video: video2, activeMode: activeMode2 } = responseData;
+            if (prompt2) stopGenerating(prompt2);
+            else stopGenerating(link);
+            const docs2 = getImageResponseDocuments();
+            if (!success) {
+              addLog(`\u56FE\u50CF\u751F\u6210\u5931\u8D25 (ID: ${requestId}): ${error}`);
+              toastr.error(`\u751F\u6210\u5931\u8D25: ${error || "\u672A\u77E5\u9519\u8BEF"}`);
             }
-            buttons.forEach((b) => {
-              b.removeAttribute("data-loading");
-              if (success && extension_settings53[extensionName].dbclike == "true") {
-                b.style.setProperty("display", "none", "important");
-              } else {
-                b.disabled = false;
-                const bMode = b.dataset.activeMode || (isVideo ? "video" : "image");
-                b.textContent = bMode === "video" ? "\u751F\u6210\u89C6\u9891" : "\u751F\u6210\u56FE\u7247";
+            let totalMatchedSpans = 0;
+            docs2.forEach((doc) => {
+              const spans = doc.querySelectorAll(`span[data-request-id="${requestId}"]`);
+              if (success && spans.length > 0) {
+                totalMatchedSpans += spans.length;
+                addLog(`${isVideo ? "\u89C6\u9891" : "\u56FE\u50CF"}\u751F\u6210\u6210\u529F (ID: ${requestId}), targeting ${spans.length} element(s).`);
+                spans.forEach((span) => {
+                  const associatedButton = span.previousElementSibling;
+                  const finalVideo = video2 || (associatedButton ? associatedButton.dataset.video : "");
+                  const finalActiveMode = activeMode2 || (associatedButton ? associatedButton.dataset.activeMode : "");
+                  if (associatedButton && associatedButton.matches(`button[data-request-id="${requestId}"]`)) {
+                    createAndShowImage(span, imageData, "Generated Image", associatedButton, change2, isVideo, originalUrl || "", finalVideo, finalActiveMode);
+                  } else {
+                    createAndShowImage(span, imageData, "Generated Image", null, change2, isVideo, originalUrl || "", finalVideo, finalActiveMode);
+                  }
+                });
               }
             });
-          });
-          if (success && totalMatchedSpans === 0) {
-            setTimeout(() => {
-              Promise.resolve().then(() => (init_chatProcessor(), chatProcessor_exports)).then(({ processMesTextElements: processMesTextElements2, processIframes: processIframes2 }) => {
-                processMesTextElements2();
-                processIframes2();
-              }).catch(() => {
+            if (success && totalMatchedSpans === 0) {
+              setTimeout(() => {
+                Promise.resolve().then(() => (init_chatProcessor(), chatProcessor_exports)).then(({ processMesTextElements: processMesTextElements2, processIframes: processIframes2 }) => {
+                  processMesTextElements2();
+                  processIframes2();
+                }).catch(() => {
+                });
+              }, 80);
+            }
+          } catch (err) {
+            console.error("[generation] imageResponseHandler \u5904\u7406\u5F02\u5E38:", err);
+          } finally {
+            stopGenerating(link);
+            const docs2 = getImageResponseDocuments();
+            docs2.forEach((doc) => {
+              const buttons = doc.querySelectorAll(`button[data-request-id="${requestId}"]`);
+              buttons.forEach((b) => {
+                b.removeAttribute("data-loading");
+                delete b.dataset.loadingStartedAt;
+                if (responseData && responseData.success && extension_settings53[extensionName].dbclike == "true") {
+                  b.style.setProperty("display", "none", "important");
+                } else {
+                  b.disabled = false;
+                  const bMode = b.dataset.activeMode || (responseData && responseData.isVideo ? "video" : "image");
+                  b.textContent = bMode === "video" ? "\u751F\u6210\u89C6\u9891" : "\u751F\u6210\u56FE\u7247";
+                }
               });
-            }, 80);
+            });
           }
         };
         trackImageResponseHandler(requestId, imageResponseHandler);
@@ -53700,7 +53828,7 @@ function showImagePreview(img, button, autoFullscreen = false) {
       } else if (imageEntry.source === "db" && imageEntry.uuid) {
         const imageData = await dbs.storeReadOnly(imageEntry.uuid);
         if (imageData && imageData.data) {
-          const mimeType = isVideo ? "video/mp4" : "image/png";
+          const mimeType = imageEntry.format ? formatToMimeType(imageEntry.format, isVideo) : detectMimeFromBuffer(imageData.data, isVideo);
           rawBlob = new Blob([imageData.data], { type: mimeType });
         }
       }
@@ -54069,7 +54197,7 @@ function showImagePreview(img, button, autoFullscreen = false) {
       } else if (imageEntry.source === "db" && imageEntry.uuid) {
         const imageData = await dbs.storeReadOnly(imageEntry.uuid);
         if (imageData && imageData.data) {
-          const mimeType = isVideo ? "video/mp4" : "image/png";
+          const mimeType = imageEntry.format ? formatToMimeType(imageEntry.format, isVideo) : detectMimeFromBuffer(imageData.data, isVideo);
           rawBlob = new Blob([imageData.data], { type: mimeType });
         }
       }
@@ -108518,7 +108646,7 @@ eventSource44.on(event_types6.GENERATION_ENDED, async (data) => {
           messageId,
           elementConnected: el.isConnected
         });
-        handlePromptRequest(el, "gesture1");
+        handlePromptRequest(el, "gesture1", { source: "auto", isAuto: true, skipDemandPopup: true });
       } catch (error) {
         console.error("[st-chatu8] handlePromptRequest failed:", error);
         debugLog("autoLLMClick.GENERATION_ENDED", "handlePromptRequest \u8C03\u7528\u5931\u8D25", {
@@ -109720,15 +109848,6 @@ async function initUI({ check_update: check_update2 }) {
         await handleInsertOriginalTextRegex(true);
         changes.push('\u5DF2\u5F00\u542F"\u63D2\u5165\u539F\u6587(\u975E\u540C\u5C42)"');
       }
-      if (extension_settings112[extensionName]?.imageGenDemandEnabled) {
-        extension_settings112[extensionName].imageGenDemandEnabled = false;
-        const imageGenDemandSwitch = $("#ch-image-gen-demand-enabled");
-        if (imageGenDemandSwitch.length) {
-          imageGenDemandSwitch.prop("checked", false);
-        }
-        saveSettingsDebounced71();
-        changes.push('\u5DF2\u5173\u95ED"\u751F\u56FE\u9700\u6C42\u5F39\u7A97"');
-      }
       if (changes.length > 0) {
         toastr.info(changes.join("\uFF0C"), "\u81EA\u52A8LLM\u8BF7\u6C42\u751F\u56FE\u5DF2\u542F\u7528");
       }
@@ -110246,6 +110365,7 @@ init_config();
 init_utils();
 init_generation_status();
 init_placeholder();
+init_database();
 
 
 function generateStableId3(str) {
@@ -110257,96 +110377,109 @@ function generateStableId3(str) {
   }
   return "chatu8-id-" + Math.abs(hash).toString(36);
 }
-var pregenQueue = /* @__PURE__ */ new Map();
-var isProcessing = false;
-var TaskStatus2 = {
-  QUEUED: "queued",
-  PROCESSING: "processing",
-  COMPLETED: "completed",
-  FAILED: "failed",
-  CANCELLED: "cancelled"
-};
-async function triggerButtonForTask(task) {
-  const { prompt: prompt2 } = task;
-  const normalizedPrompt = normalizePromptTag(prompt2);
-  return new Promise((resolve, reject) => {
-    if (isGenerating(normalizedPrompt)) {
-      addLog(`[Pregen] Image generation is already in progress, skipping: ${normalizedPrompt}`);
-      task.status = TaskStatus2.COMPLETED;
-      return resolve();
+var pregenDispatched = /* @__PURE__ */ new Set();
+var currentSessionEpoch = 0;
+var activeTaskCleanups = /* @__PURE__ */ new Set();
+async function dispatchPregenTask(normPrompt) {
+  const taskEpoch = currentSessionEpoch;
+  let cleanup = null;
+  const onTaskFinish = () => {
+    if (cleanup) {
+      cleanup();
+      activeTaskCleanups.delete(cleanup);
+      cleanup = null;
     }
-    const requestId = generateStableId3(normalizedPrompt);
-    registerAutoClickHandled(normalizedPrompt, requestId);
-    startGenerating(normalizedPrompt);
+    if (taskEpoch !== currentSessionEpoch) {
+      addLog(`[Pregen] \u4EFB\u52A1\u6240\u5C5E\u4F1A\u8BDD\u5DF2\u8FC7\u671F (epoch: ${taskEpoch} vs ${currentSessionEpoch})\uFF0C\u5FFD\u7565\u4EFB\u52A1\u7ED3\u675F\u56DE\u8C03`);
+      return;
+    }
+  };
+  try {
+    const [imageUrl] = await getItemImg(normPrompt);
+    if (taskEpoch !== currentSessionEpoch) return;
+    if (imageUrl) {
+      registerAutoClickHandled(normPrompt);
+      addLog(`[Pregen] \u672C\u5730/\u8FDC\u7AEF\u5DF2\u5B58\u5728\u8BE5\u56FE\u7247\uFF0C\u8DF3\u8FC7\u9884\u751F\u6210: ${normPrompt}`);
+      onTaskFinish();
+      return;
+    }
+    if (isGenerating(normPrompt)) {
+      addLog(`[Pregen] \u56FE\u50CF\u6B63\u5728\u751F\u6210\u4E2D\uFF0C\u8DF3\u8FC7\u91CD\u590D\u6D3E\u53D1: ${normPrompt}`);
+      onTaskFinish();
+      return;
+    }
+    const requestId = generateStableId3(normPrompt);
+    registerAutoClickHandled(normPrompt, requestId);
+    startGenerating(normPrompt);
+    let timeoutTimer = null;
+    let isCompleted = false;
     const imageResponseHandler = (responseData) => {
       if (responseData.id !== requestId) return;
-      eventSource45.removeListener(EventType.GENERATE_IMAGE_RESPONSE, imageResponseHandler);
-      addLog(`[Pregen] Response listener removed for ID: ${requestId}`);
+      if (isCompleted) return;
+      isCompleted = true;
       const { success, error, prompt: responsePrompt } = responseData;
-      if (responsePrompt) {
-        stopGenerating(responsePrompt);
-      }
-      if (success) {
-        addLog(`[Pregen] Image generated successfully for: ${responsePrompt}`);
-        task.status = TaskStatus2.COMPLETED;
-        resolve();
-      } else {
-        addLog(`[Pregen] Image generation failed for: ${responsePrompt}. Error: ${error}`);
-        task.status = TaskStatus2.FAILED;
-        reject(new Error(error || "Unknown generation error"));
-      }
+      addLog(`[Pregen] \u6536\u5230\u751F\u6210\u54CD\u5E94 (ID: ${requestId}, \u72B6\u6001: ${success ? "\u6210\u529F" : "\u5931\u8D25"}${error ? ", \u9519\u8BEF: " + error : ""})`);
+      onTaskFinish();
     };
+    cleanup = () => {
+      if (timeoutTimer) {
+        clearTimeout(timeoutTimer);
+        timeoutTimer = null;
+      }
+      eventSource45.removeListener(EventType.GENERATE_IMAGE_RESPONSE, imageResponseHandler);
+      stopGenerating(normPrompt);
+    };
+    activeTaskCleanups.add(cleanup);
+    // Cloud waitForJob excludes queue time and owns the request timeout.
+    const cloudMode = ["wavespeed", "civitai"].includes(extension_settings3[extensionName]?.mode);
+    if (!cloudMode) timeoutTimer = setTimeout(() => {
+      if (isCompleted) return;
+      isCompleted = true;
+      addLog(`[Pregen] \u4EFB\u52A1\u8D85\u65F6\u672A\u54CD\u5E94 (ID: ${requestId})\uFF0C\u5DF2\u81EA\u52A8\u89E3\u9664\u72B6\u6001`);
+      onTaskFinish();
+    }, 18e4);
     eventSource45.on(EventType.GENERATE_IMAGE_RESPONSE, imageResponseHandler);
-    addLog(`[Pregen] Response listener created for ID: ${requestId}`);
-    const requestData = { id: requestId, prompt: normalizedPrompt };
+    let finalWidth = null;
+    let finalHeight = null;
+    const sizeRegex = /,?\s*(\d{2,4})x(\d{2,4})(?=[;\s]|$)/i;
+    const linkMatch = normPrompt.match(sizeRegex);
+    if (linkMatch && String(extension_settings3[extensionName]?.aiAutonomousResolution) !== "false") {
+      finalWidth = linkMatch[1];
+      finalHeight = linkMatch[2];
+    }
+    const requestData = {
+      id: requestId,
+      prompt: normPrompt,
+      width: finalWidth,
+      height: finalHeight
+    };
     eventSource45.emit(EventType.GENERATE_IMAGE_REQUEST, requestData);
-    addLog(`[Pregen] Emitted image generation request for ID: ${requestId}`);
-  });
+    addLog(`[Pregen] \u5DF2\u5E76\u53D1\u6D3E\u53D1\u751F\u56FE\u8BF7\u6C42 (ID: ${requestId}): ${normPrompt}`);
+  } catch (err) {
+    console.error(`[Pregen] \u6D3E\u53D1\u9884\u751F\u6210\u4EFB\u52A1\u5F02\u5E38: ${normPrompt}`, err);
+    onTaskFinish();
+  }
 }
-async function processQueue() {
-  if (isProcessing) return;
-  const nextTask = Array.from(pregenQueue.values()).find((task) => task.status === TaskStatus2.QUEUED);
-  if (!nextTask) {
-    isProcessing = false;
-    return;
-  }
-  isProcessing = true;
-  nextTask.status = TaskStatus2.PROCESSING;
-  addLog(`[Pregen] \u5F00\u59CB\u5904\u7406\u4EFB\u52A1: ${nextTask.prompt}`);
-  try {
-    await triggerButtonForTask(nextTask);
-  } catch (error) {
-    console.error(`[Pregen] \u5904\u7406\u4EFB\u52A1\u5931\u8D25 ${nextTask.prompt}:`, error);
-    nextTask.status = TaskStatus2.FAILED;
-  } finally {
-    isProcessing = false;
-    setTimeout(processQueue, 100);
-  }
+function schedulePregenTask(normPrompt) {
+  dispatchPregenTask(normPrompt);
 }
 function add(prompts) {
   if (!Array.isArray(prompts)) return;
-  let addedNew = false;
   prompts.forEach((prompt2) => {
     const norm = normalizePromptTag(prompt2);
     if (!norm) return;
-    if (!pregenQueue.has(norm)) {
-      registerAutoClickHandled(norm);
-      pregenQueue.set(norm, {
-        prompt: norm,
-        status: TaskStatus2.QUEUED
-      });
-      addedNew = true;
-      addLog(`[Pregen] \u6DFB\u52A0\u5230\u961F\u5217: ${norm}`);
-    }
+    if (pregenDispatched.has(norm)) return;
+    pregenDispatched.add(norm);
+    schedulePregenTask(norm);
   });
-  if (addedNew) {
-    processQueue();
-  }
 }
 function clear() {
-  pregenQueue.clear();
-  isProcessing = false;
-  addLog("[Pregen] \u961F\u5217\u5DF2\u6E05\u7A7A\u3002");
+  currentSessionEpoch++;
+  pregenDispatched.clear();
+  // Invalidate work not yet submitted, but keep listeners for paid/in-flight jobs.
+  // Their completion releases only their own generating state; a new chat must
+  // not cancel a remote job or make an identical prompt submit twice.
+  addLog(`[Pregen] Reset pending dispatches (epoch: ${currentSessionEpoch}); submitted jobs remain tracked.`);
 }
 var pregenManager = {
   add,
@@ -110355,24 +110488,55 @@ var pregenManager = {
 
 // utils/settings/stream_generate.js
 init_utils();
+function stripThinkingForPregen(text) {
+  if (!text || typeof text !== "string") return "";
+  let cleaned = text;
+  cleaned = cleaned.replace(/<\s*(?:think(?:ing)?|thought)(?:\s+[^>]*)?>[\s\S]*?<\/\s*(?:think(?:ing)?|thought)\s*>/gi, "");
+  const closeMatch = cleaned.match(/<\/\s*(?:think(?:ing)?|thought)\s*>/i);
+  if (closeMatch && closeMatch.index !== void 0) {
+    cleaned = cleaned.substring(closeMatch.index + closeMatch[0].length);
+  }
+  const openMatch = cleaned.match(/<\s*(?:think(?:ing)?|thought)(?:\s+[^>]*)?>/i);
+  if (openMatch && openMatch.index !== void 0) {
+    cleaned = cleaned.substring(0, openMatch.index);
+  }
+  const tailDanglingRegex = /(?:<\s*\/?(?:think(?:ing)?|thought)(?:\s+[^>]*)?|<\s*\/?(?:t(?:h(?:i(?:n(?:k(?:i(?:n(?:g)?)?)?)?)?)?|h?o(?:u(?:g(?:h(?:t)?)?)?)?)?)?)$/i;
+  cleaned = cleaned.replace(tailDanglingRegex, "");
+  return cleaned;
+}
 function parsePrompts(text) {
   const settings3 = extension_settings114[extensionName];
   if (!settings3.startTag || !settings3.endTag) return [];
+  const visibleText = stripThinkingForPregen(text);
+  if (!visibleText) return [];
   const escapeRegExp2 = (string) => {
     return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   };
   const start = escapeRegExp2(settings3.startTag);
   const end = escapeRegExp2(settings3.endTag);
   const pattern = new RegExp(`${start}([\\s\\S]*?)${end}`, "g");
-  const matches = [...text.matchAll(pattern)];
+  const matches = [...visibleText.matchAll(pattern)];
   return matches.map((match) => normalizePromptTag(match[1])).filter(Boolean);
 }
-eventSource46.on(event_types7.generation_started, () => {
-  if (String(extension_settings114[extensionName].enablePregen) !== "true") return;
+var genStartedEvent = event_types7.GENERATION_STARTED || "generation_started";
+eventSource46.on(genStartedEvent, () => {
+  if (String(extension_settings114[extensionName]?.enablePregen) !== "true") return;
   pregenManager.clear();
 });
+var genStoppedEvent = event_types7.GENERATION_STOPPED || "generation_stopped";
+eventSource46.on(genStoppedEvent, () => {
+  if (String(extension_settings114[extensionName]?.enablePregen) !== "true") return;
+  pregenManager.clear();
+});
+// A normal end of the LLM stream is not an end of its image jobs.
+// Keep dispatched work and final-token cache checks alive until response/stop.
+if (event_types7.CHAT_CHANGED) {
+  eventSource46.on(event_types7.CHAT_CHANGED, () => {
+    pregenManager.clear();
+  });
+}
 eventSource46.on(event_types7.STREAM_TOKEN_RECEIVED, (text) => {
-  if (String(extension_settings114[extensionName].enablePregen) !== "true" || !text) return;
+  if (String(extension_settings114[extensionName]?.enablePregen) !== "true" || !text) return;
   const prompts = parsePrompts(text);
   if (prompts.length > 0) {
     pregenManager.add(prompts);

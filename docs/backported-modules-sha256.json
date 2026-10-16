@@ -1,0 +1,58 @@
+{
+  "version": "3.1.0-cloud.12",
+  "baseVersion": "3.1.0",
+  "upstreamVersion": "3.1.6",
+  "upstreamCommit": "8b07f4554355671e0a288afa94c1ae89ddfb8b8b",
+  "modules": {
+    "utils/utils.js": {
+      "beforeSha256": "65198fec44fa93fea364bb9993de222db7efba179b47352ea320725c89644a15",
+      "sha256": "3840e32a4d6e8222f0cc6f5264c0b56f47c8d388be22309f75e6f7aa2f39ea29",
+      "purpose": "Backport regex prompt replacement, including character rules and capture substitutions."
+    },
+    "utils/imageInserter.js": {
+      "beforeSha256": "2e704d4d32ae6cf5d02b8be4f49d1efb3414741ae525c47045a7acfa2a26f2e6",
+      "sha256": "a64268cf3d4264fe9f6e5de2a432688c54933f65ddd934bae5bdfa01d8dcc6d6",
+      "purpose": "Respect the content boundary for DOM and saved-text insertion, including fallback searches."
+    },
+    "utils/database.js": {
+      "beforeSha256": "9593bdec5bc0041998d4f9b6286bd5eb80621c27a6a2dbbb6450eb06b5ce8172",
+      "sha256": "a70a776825ee748084364af7a9bc3af46fc02c2845438bcb96500c07c95bd1ed",
+      "purpose": "Preserve and detect actual image/video MIME types; leave database identity and transactions unchanged."
+    },
+    "utils/iframe/imagePreview.js": {
+      "beforeSha256": "6f8918a82dcbef7e66c78bbcc0c712e94ddc4b584badc969eedf84e928a1436b",
+      "sha256": "9da6ef02262603e78124e4851b186b898a593b00a6abaa4b9bd159dfa826c71b",
+      "purpose": "Use the actual cached media type in the existing preview."
+    },
+    "utils/iframe/generation.js": {
+      "beforeSha256": "f4f89678237ffccaa427938c2cdf4a46ca7b8e25cbbda69004946ff4236e4a21",
+      "sha256": "fb4ee9a8da4ea42601739534a4c26f769a0946182e2f91b926654fbd81c6a05f",
+      "purpose": "Always release loading buttons after a response, including rendering errors and inaccessible iframes."
+    },
+    "utils/promptReq.js": {
+      "beforeSha256": "020937597b22e601146b19ffe1851ce7616359535c80fc0bbacc73cd217a4d1f",
+      "sha256": "e7f03327aec23ef5bda3a8acbff8a30a6185308edbd8d4deee1da9b811e05e5e",
+      "purpose": "Distinguish automatic requests from manual demand dialogs."
+    },
+    "utils/iframe/autoLLMClick.js": {
+      "beforeSha256": "3703a81222829e3116a6c426b20c40262e2b3ce8f53f2be196c87de8dd808dbd",
+      "sha256": "6706712e1174f865a41bf20dee5bf66bb9e9374d3fc9d5700bcdde7c17966160",
+      "purpose": "Mark automatic LLM requests explicitly instead of changing the manual preference."
+    },
+    "utils/ui.js": {
+      "beforeSha256": "7e8604fedfc854a7f80fbd1fb7f4d72e95840feda165186db3808da43cb19c49",
+      "sha256": "cb343f1418a140ef5eb6313ea57c65bfdb59e4229a8f74c7c958bf5d58a4a8f6",
+      "purpose": "Do not disable the saved manual-demand option when automatic LLM generation is enabled."
+    },
+    "utils/pregen_manager.js": {
+      "beforeSha256": "afb8732202ad13e2ccbe9b1928ea60d030967d4ea89cdff689bbcacccf5d5057",
+      "sha256": "afb50cdfa9077ada030084888b9e68576432f8fd5c64bcd773ae40bc9a0183e0",
+      "purpose": "Concurrent pre-dispatch with cache deduplication; preserve cloud queued jobs and completion listeners across stream/chat resets."
+    },
+    "utils/settings/stream_generate.js": {
+      "beforeSha256": "d7394987f6978fced2a3257afe111e2e77b7c12ebf8437f51ade46463ff40200",
+      "sha256": "e8d2d0d3382af356a70c083c57735deb56f36ab1d148776e3d83aaacc5e4d71f",
+      "purpose": "Exclude complete/partial thinking blocks, fix generation-start events, and reset only pending work on stop/chat change."
+    }
+  }
+}
