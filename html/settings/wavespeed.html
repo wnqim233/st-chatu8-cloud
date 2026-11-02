@@ -45,7 +45,7 @@
     <section class="st-chatu8-settings-section" id="ws-civitai-panel" data-ws-provider="civitai">
       <h3>Civitai 配置</h3>
       <div class="st-chatu8-field"><label for="ws-civitai-key">API Key <span id="ws-civitai-key-state" class="ws-hint"></span></label><input id="ws-civitai-key" type="password" autocomplete="new-password" placeholder="留空保留已保存的 Key"></div>
-      <div class="st-chatu8-field"><label for="ws-civitai-model">模型 AIR</label><input id="ws-civitai-model" spellcheck="false"></div>
+      <div class="st-chatu8-field"><label for="ws-civitai-model">模型 AIR</label><input id="ws-civitai-model" spellcheck="false" aria-describedby="ws-civitai-air-help"><small id="ws-civitai-air-help" class="ws-hint">粘贴完整 AIR；如果版本号后有 +文件编号，请保留。</small></div>
       <div class="st-chatu8-field"><label for="ws-civitai-currency">使用哪种 Buzz？</label><select id="ws-civitai-currency"><option value="yellow">仅黄 Buzz · 允许成熟内容（默认）</option><option value="blue">仅蓝 Buzz · 仅 SFW</option><option value="green">仅绿 Buzz · 仅 SFW</option><option value="blue_green">蓝＋绿 Buzz · 仅 SFW</option></select></div>
       <p id="ws-civitai-payment-hint" class="ws-hint"></p>
       <p class="ws-hint">所有选项均禁止自动升级扣费。报价和实际提交使用相同的支付设置；已排队任务保留入队时的币种。</p>

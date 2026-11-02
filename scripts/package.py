@@ -25,7 +25,7 @@ with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as archive:
     archive.write(root / 'INSTALL_WAVESPEED.md', '安装说明.md')
 with zipfile.ZipFile(target) as archive:
     assert archive.testzip() is None
-    for required in ['st-chatu8-cloud/manifest.json', 'st-chatu8-cloud/index.js', 'st-chatu8-cloud/html/settings/send_data.html', 'st-chatu8-cloud/wavespeed/browser.js', 'st-chatu8-cloud/shared/jobs.js', 'st-chatu8-cloud/LICENSE', '安装说明.md']:
+    for required in ['st-chatu8-cloud/manifest.json', 'st-chatu8-cloud/index.js', 'st-chatu8-cloud/html/settings/send_data.html', 'st-chatu8-cloud/wavespeed/browser.js', 'st-chatu8-cloud/shared/jobs.js', 'st-chatu8-cloud/shared/image-reply.js', 'st-chatu8-cloud/shared/image-footer.js', 'st-chatu8-cloud/LICENSE', '安装说明.md']:
         assert required in archive.namelist(), required
 digest = hashlib.sha256(target.read_bytes()).hexdigest()
 (dist / (target.name + '.sha256')).write_text(f'{digest}  {target.name}\n')

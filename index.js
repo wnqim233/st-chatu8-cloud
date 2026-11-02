@@ -1,9 +1,11 @@
-/* Modified by Codex for the workspace owner, 2026-09-19; selected 3.1.6 fixes backported 2026-10-16.
+/* Modified by Codex for the workspace owner, 2026-09-19; selected 3.1.6 fixes backported 2026-10-16; image reply parsing fixed 2026-11-02.
  * Purpose: add WaveSpeed and Civitai backend hooks and settings; preserve upstream worldbook/LLM behavior.
  * Upstream: damoshen123/st-chatu8 @ 4e1e8f8a6cab1375d39eb806a292516dbb9c43be.
  * Licensed under the Aladdin Free Public License; see LICENSE and MODIFICATIONS.md.
  */
 import { createWaveSpeedAdapter } from "./wavespeed/adapter.js";
+import { parseImageReply, imageReplyFailureInfo } from "./shared/image-reply.js";
+import { imageFooterOffset, orderImageInsertions, retainImageDrafts, promoteImageDraft, showImageDrafts } from "./shared/image-footer.js";
 var waveSpeedAdapterInstance;
 function getWaveSpeedAdapter() {
   return waveSpeedAdapterInstance ||= createWaveSpeedAdapter({
@@ -16171,412 +16173,70 @@ function calculateNgramSimilarity(str1, str2, n = 3) {
   const union = ngrams1.size + ngrams2.size - intersection;
   return intersection / union;
 }
-function normalizeImagesReply(input) {
-  const source = typeof input === "string" ? input : "";
-  const extracted = extractImagesSection(source);
-  if (!extracted.found) {
-    return {
-      changed: false,
-      foundImagesBlock: false,
-      keptEntries: 0,
-      droppedEntries: 0,
-      warnings: ["No <images> block found."],
-      output: source
-    };
-  }
-  const normalizedBlock = normalizeImagesBlock(extracted.block);
-  const output = source.slice(0, extracted.start) + normalizedBlock.block + source.slice(extracted.end);
-  const result = {
-    changed: output !== source,
-    foundImagesBlock: true,
-    keptEntries: normalizedBlock.keptEntries,
-    droppedEntries: normalizedBlock.droppedEntries,
-    warnings: normalizedBlock.warnings,
-    output
-  };
-  if (result.changed) {
-    console.log(
-      "[imageBlockNormalizer] repaired image block:",
-      `kept=${result.keptEntries}`,
-      `dropped=${result.droppedEntries}`,
-      result.warnings.length ? `warnings=${JSON.stringify(result.warnings)}` : ""
-    );
-  }
-  return result;
-}
-function extractImagesSection(input) {
-  const openMatch = IMAGES_OPEN_RE.exec(input);
-  if (!openMatch) {
-    return { found: false, start: -1, end: -1, block: "" };
-  }
-  const start = openMatch.index;
-  const bodyStart = start + openMatch[0].length;
-  const rest = input.slice(bodyStart);
-  const closeMatch = IMAGES_CLOSE_RE.exec(rest);
-  const end = closeMatch ? bodyStart + closeMatch.index + closeMatch[0].length : input.length;
-  const block = input.slice(start, end);
-  return { found: true, start, end, block };
-}
-function normalizeImagesBlock(block) {
-  const warnings = [];
-  const openMatch = IMAGES_OPEN_RE.exec(block);
-  if (!openMatch) {
-    return {
-      block,
-      keptEntries: 0,
-      droppedEntries: 0,
-      warnings: ["Malformed images block: missing <images>."]
-    };
-  }
-  const openEnd = openMatch.index + openMatch[0].length;
-  const rest = block.slice(openEnd);
-  const closeMatch = IMAGES_CLOSE_RE.exec(rest);
-  const rawBody = closeMatch ? rest.slice(0, closeMatch.index) : rest;
-  if (!closeMatch) {
-    warnings.push("Missing </images>; auto-closed block.");
-  }
-  const entries = _splitEntries(rawBody);
-  const normalizedEntries = [];
-  let droppedEntries = 0;
-  for (const entry of entries) {
-    const normalizedEntry = _normalizeEntry(entry);
-    if (!normalizedEntry) {
-      droppedEntries += 1;
-      continue;
-    }
-    normalizedEntries.push(normalizedEntry);
-  }
-  if (entries.length === 0) {
-    warnings.push("No candidate image entries found inside <images>.");
-  }
-  if (droppedEntries > 0) {
-    warnings.push(`Dropped ${droppedEntries} malformed image entr${droppedEntries === 1 ? "y" : "ies"}.`);
-  }
-  const body = normalizedEntries.join("\n");
-  const normalizedBlock = body ? `<images>
-${body}
-</images>` : "<images>\n</images>";
-  return {
-    block: normalizedBlock,
-    keptEntries: normalizedEntries.length,
-    droppedEntries,
-    warnings
-  };
-}
-function _splitEntries(rawBody) {
-  const body = rawBody.replace(/<\\images>/gi, "").replace(/<image>/gi, "").replace(/<\\image>/gi, "</image>").replace(/<\/image>/gi, "").trim();
-  if (!body) {
-    return [];
-  }
-  const regexPositions = _collectMatchIndexes(body, REGEX_MARKER_GLOBAL_RE);
-  if (regexPositions.length > 0) {
-    const chunks = [];
-    const firstRegexIndex = regexPositions[0];
-    const leadingChunk = body.slice(0, firstRegexIndex).trim();
-    if (leadingChunk) {
-      chunks.push(leadingChunk);
-    }
-    return chunks.concat(_sliceByPositions(body, regexPositions));
-  }
-  return [body];
-}
-function _normalizeEntry(entry) {
-  const cleaned = entry.replace(IMAGE_CLOSE_RE, "").replace(/<\/images>|<\\images>/gi, "").replace(/<\/?tr>/gi, "").replace(/<\/?table>/gi, "").trim();
-  if (!cleaned) {
-    return null;
-  }
-  const regexIndex = cleaned.search(REGEX_MARKER_RE);
-  const imagePromptIndex = cleaned.search(IMAGE_PROMPT_MARKER_RE);
-  if (regexIndex === -1 || imagePromptIndex === -1) {
-    return null;
-  }
-  const regexPart = _extractRegexPart(cleaned.slice(regexIndex, imagePromptIndex));
-  const middlePart = cleaned.slice(regexIndex + regexPart.length, imagePromptIndex).trim();
-  const imagePromptPart = _normalizeImagePromptPart(cleaned.slice(imagePromptIndex));
-  if (!REGEX_MARKER_RE.test(regexPart) || !IMAGE_PROMPT_MARKER_RE.test(imagePromptPart)) {
-    return null;
-  }
-  const inner = [regexPart, middlePart, imagePromptPart].filter(Boolean).join("\n");
-  return `<image>
-${inner}
-</image>`;
-}
-function _extractRegexPart(text) {
-  const trimmed = text.trim();
-  const firstLine = trimmed.split("\n").map((line) => line.trim()).find((line) => REGEX_MARKER_RE.test(line));
-  return firstLine || trimmed;
-}
-function _normalizeImagePromptPart(text) {
-  const trimmed = text.trim();
-  const markerIndex = trimmed.search(IMAGE_PROMPT_MARKER_RE);
-  if (markerIndex === -1) {
-    return "";
-  }
-  const fromMarker = trimmed.slice(markerIndex).trim();
-  const afterMarker = fromMarker.slice("image###".length);
-  const closeMatch = PROMPT_CLOSE_RE.exec(afterMarker);
-  PROMPT_CLOSE_RE.lastIndex = 0;
-  if (closeMatch) {
-    const content2 = afterMarker.slice(0, closeMatch.index).trim();
-    return `image### ${content2} ###`;
-  }
-  const content = afterMarker.trim();
-  return `image### ${content} ###`;
-}
-function _collectMatchIndexes(text, regex) {
-  const indexes = [];
-  regex.lastIndex = 0;
-  let match = regex.exec(text);
-  while (match) {
-    indexes.push(match.index);
-    match = regex.exec(text);
-  }
-  regex.lastIndex = 0;
-  return indexes;
-}
-function _sliceByPositions(text, positions) {
-  const chunks = [];
-  for (let i = 0; i < positions.length; i += 1) {
-    const start = positions[i];
-    const end = i + 1 < positions.length ? positions[i + 1] : text.length;
-    const chunk = text.slice(start, end).trim();
-    if (chunk) {
-      chunks.push(chunk);
-    }
-  }
-  return chunks;
-}
-function convertNewXmlFormatToOld(text) {
-  if (!text || typeof text !== "string") return text;
-  const imagesMatches = [...text.matchAll(/<images>([\s\S]*?)<\/images>/gi)];
-  if (imagesMatches.length === 0) return text;
-  const lastMatch = imagesMatches[imagesMatches.length - 1];
-  const rawImagesInner = lastMatch[1];
-  if (!/<prompts>|<title_styled>/i.test(rawImagesInner)) {
-    return text;
-  }
-  const newInner = rawImagesInner.replace(/<image>([\s\S]*?)<\/image>/gi, (match, imageInner) => {
-    const regexMatch = imageInner.match(/<regex>([\s\S]*?)<\/regex>/i);
-    const regexStr = regexMatch ? `regex:${regexMatch[1].trim()}` : "";
-    const titleMatch = imageInner.match(/<title_styled>([\s\S]*?)<\/title_styled>/i);
-    const titleStr = titleMatch ? `<font color="steelblue">[${titleMatch[1].trim()}]</font>` : "";
-    const tagThinkMatch = imageInner.match(/<Tag_think>([\s\S]*?)<\/Tag_think>/i);
-    const tagThinkStr = tagThinkMatch ? `<Tag_think>
-${tagThinkMatch[1].trim()}
-</Tag_think>` : "";
-    const sizeMatch = imageInner.match(/<size>([\s\S]*?)<\/size>/i);
-    let sizeResolution = "";
-    if (sizeMatch) {
-      const sizeParts = sizeMatch[1].trim().replace(/，/g, ",").split(",");
-      if (sizeParts.length > 0) {
-        sizeResolution = sizeParts[sizeParts.length - 1].trim();
-      }
-    }
-    const promptsMatch = imageInner.match(/<prompts>([\s\S]*?)<\/prompts>/i);
-    let promptStr = "";
-    if (promptsMatch) {
-      const promptsInner = promptsMatch[1];
-      const sceneMatch = promptsInner.match(/<scene_composition>([\s\S]*?)<\/scene_composition>/i);
-      const charRegex = /<character_(\d+)>([\s\S]*?)<\/character_\1>/gi;
-      const charMatches = [...promptsInner.matchAll(charRegex)];
-      if (sceneMatch || charMatches.length > 0) {
-        let sceneContent = sceneMatch ? sceneMatch[1].trim() : "";
-        if (sizeResolution) {
-          if (sceneContent && !sceneContent.endsWith(",")) {
-            sceneContent += ",";
-          }
-          sceneContent += sizeResolution;
-        }
-        const sceneStr = sceneContent ? `Scene Composition:${sceneContent};` : "";
-        let charactersStr = "";
-        for (const charMatch of charMatches) {
-          const charIndex = charMatch[1];
-          const charInner = charMatch[2];
-          const cPromptMatch = charInner.match(/<prompt>([\s\S]*?)<\/prompt>/i);
-          const cPrompt = cPromptMatch ? cPromptMatch[1].trim() : "";
-          const centersMatch = charInner.match(/<centers>([\s\S]*?)<\/centers>/i);
-          const centers = centersMatch ? centersMatch[1].trim() : "";
-          const ucMatch = charInner.match(/<uc>([\s\S]*?)<\/uc>/i);
-          const uc = ucMatch ? ucMatch[1].trim() : "";
-          if (cPrompt || centers) {
-            charactersStr += `Character ${charIndex} Prompt:${cPrompt}|centers:${centers};
-`;
-          }
-          if (uc) {
-            charactersStr += `Character ${charIndex} UC:${uc};
-`;
-          }
-        }
-        const combinedPrompts = [sceneStr, charactersStr].filter((s) => s.trim()).join("\n").trim();
-        if (combinedPrompts) {
-          promptStr = `image###${combinedPrompts}###`;
-        }
-      } else {
-        let rawPrompts = promptsInner.trim();
-        if (sizeResolution) {
-          if (rawPrompts && !rawPrompts.endsWith(",")) {
-            rawPrompts += ",";
-          }
-          rawPrompts += sizeResolution;
-        }
-        if (rawPrompts) {
-          promptStr = `image###${rawPrompts}###`;
-        }
-      }
-    }
-    const finalImageInner = [regexStr, titleStr, tagThinkStr, promptStr].filter((s) => s.trim()).join("\n");
-    return `<image>
-${finalImageInner}
-</image>`;
+function inspectPromptImages(text) {
+  const timer = debugTimer("imageInserter.parseImagesFromPrompt", "解析 LLM 图片标签");
+  const cleaned = typeof text === "string" ? removeThinkingTextOnly(applyWordReplacement(text, "ai")) : "";
+  const report = parseImageReply(cleaned, {
+    ...getImageTags(),
+    tagthinkEcho: String(extension_settings11[extensionName]?.tagthinkEcho) === "true"
   });
-  const newImagesBlock = `<images>
-${newInner}
-</images>`;
-  const beforeLast = text.substring(0, lastMatch.index);
-  const afterLast = text.substring(lastMatch.index + lastMatch[0].length);
-  return beforeLast + newImagesBlock + afterLast;
+  debugLog("imageInserter.parseImagesFromPrompt", "解析完成", {
+    totalBlocks: report.totalBlocks, validImages: report.images.length,
+    footerCount: report.footerCount, drafts: report.drafts.length, missingAnchor: report.missingAnchor,
+    missingPrompt: report.missingPrompt, incompleteBlocks: report.incompleteBlocks
+  });
+  timer.end(`解析到 ${report.images.length} 个绘图标签，${report.drafts.length} 段待补全`);
+  // Only the request owner notifies after its configured retries finish.
+  return report;
 }
 function parseImagesFromPrompt(text) {
-  const timer = debugTimer("imageInserter.parseImagesFromPrompt", "\u89E3\u6790 LLM \u8F93\u51FA\u4E2D\u7684\u56FE\u7247\u6807\u7B7E");
-  const images = [];
-  if (!text || typeof text !== "string") {
-    debugBranch("parseImagesFromPrompt", "\u8F93\u5165\u65E0\u6548 - \u8DF3\u8FC7", true, {
-      \u8F93\u5165\u7C7B\u578B: typeof text,
-      \u662F\u5426\u4E3A\u7A7A: !text
-    });
-    timer.end("\u8F93\u5165\u65E0\u6548");
-    return images;
-  }
-  text = applyWordReplacement(text, "ai");
-  text = removeThinkingTextOnly(text);
-  debugLog("imageInserter.parseImagesFromPrompt", "\u5F00\u59CB\u89E3\u6790", {
-    \u6587\u672C\u957F\u5EA6: text.length
-  });
-  debugContent("parseImagesFromPrompt", "LLM \u539F\u59CB\u8F93\u51FA", text, 500);
-  console.log("[parseImagesFromPrompt] \u5F00\u59CB\u89E3\u6790\uFF0C\u6587\u672C\u957F\u5EA6:", text.length);
-  const convertedText = convertNewXmlFormatToOld(text);
-  if (convertedText !== text) {
-    text = convertedText;
-    console.log("[parseImagesFromPrompt] \u68C0\u6D4B\u5230\u65B0\u7248 XML \u683C\u5F0F\u5E76\u8F6C\u6362\u4E3A\u65E7\u7248\u517C\u5BB9\u683C\u5F0F\uFF0C\u65B0\u957F\u5EA6:", text.length);
-    debugBranch("parseImagesFromPrompt", "\u683C\u5F0F\u8F6C\u6362", true, {
-      \u5907\u6CE8: "\u5C06\u65B0\u7248 XML \u56FE\u7247\u683C\u5F0F\u8F6C\u6362\u4E3A\u517C\u5BB9\u683C\u5F0F"
-    });
-  }
-  const _normResult = normalizeImagesReply(text);
-  if (_normResult.changed) {
-    text = _normResult.output;
-    console.log(
-      "[parseImagesFromPrompt] images \u5757\u5DF2\u89C4\u8303\u5316\uFF0C\u65B0\u957F\u5EA6:",
-      text.length,
-      _normResult.warnings.length ? `warnings=${JSON.stringify(_normResult.warnings)}` : ""
-    );
-  }
-  let searchText = text;
-  const imagesContainerRegex = /<images>([\s\S]*?)<\/images>/g;
-  const allImagesMatches = [...text.matchAll(imagesContainerRegex)];
-  if (allImagesMatches.length > 0) {
-    searchText = allImagesMatches.map((match) => match[1]).join("\n");
-    debugBranch("parseImagesFromPrompt", "\u627E\u5230 <images> \u5BB9\u5668", true, {
-      \u5BB9\u5668\u6570\u91CF: allImagesMatches.length,
-      \u5408\u5E76\u540E\u957F\u5EA6: searchText.length
-    });
-    console.log("[parseImagesFromPrompt] \u627E\u5230", allImagesMatches.length, "\u4E2A <images> \u5BB9\u5668\uFF0C\u5DF2\u5408\u5E76\u6240\u6709\u5185\u5BB9\uFF08\u603B\u957F\u5EA6:", searchText.length, "\uFF09");
-  } else {
-    debugBranch("parseImagesFromPrompt", "\u672A\u627E\u5230 <images> \u5BB9\u5668 - \u4F7F\u7528\u5B8C\u6574\u6587\u672C", true);
-    console.log("[parseImagesFromPrompt] \u672A\u627E\u5230 <images> \u5BB9\u5668\uFF0C\u4F7F\u7528\u5B8C\u6574\u6587\u672C");
-  }
-  const imageRegex = /<image>([\s\S]*?)<\/image>/g;
-  const imageBlocks = [];
-  let imageMatch;
-  while ((imageMatch = imageRegex.exec(searchText)) !== null) {
-    imageBlocks.push({
-      fullMatch: imageMatch[0],
-      content: imageMatch[1],
-      startIndex: imageMatch.index
-    });
-  }
-  debugLog("imageInserter.parseImagesFromPrompt", "\u627E\u5230 <image> \u5757", {
-    \u5757\u6570\u91CF: imageBlocks.length
-  });
-  console.log("[parseImagesFromPrompt] \u627E\u5230", imageBlocks.length, "\u4E2A <image> \u5757");
-  for (let i = 0; i < imageBlocks.length; i++) {
-    const block = imageBlocks[i];
-    const imageContent = block.content;
-    console.log(`[parseImagesFromPrompt] \u89E3\u6790\u7B2C ${i + 1} \u4E2A <image> \u5757\uFF0C\u5185\u5BB9\u957F\u5EA6: ${imageContent.length}`);
-    let regexText = "";
-    const imgthinkRegex = /<imgthink>([\s\S]*?)<\/imgthink>/;
-    const imgthinkMatch = imageContent.match(imgthinkRegex);
-    if (imgthinkMatch) {
-      const imgthinkContent = imgthinkMatch[1];
-      const regexLineMatch = imgthinkContent.match(/regex:(.*?)(?:\n|$)/);
-      if (regexLineMatch) {
-        regexText = regexLineMatch[1].trim();
-      }
-    }
-    if (!regexText) {
-      const directRegexMatch = imageContent.match(/regex:(.*?)(?:\n|$)/);
-      if (directRegexMatch) {
-        regexText = directRegexMatch[1].trim();
-      }
-    }
-    const tagthinkEchoEnabled = String(extension_settings11[extensionName]?.tagthinkEcho) === "true";
-    const { startTag, endTag } = getImageTags();
-    let tag;
-    if (!tagthinkEchoEnabled) {
-      const escapedStart = startTag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const escapedEnd = endTag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const pureTagRegex = new RegExp(`${escapedStart}([\\s\\S]*?)${escapedEnd}`);
-      const pureTagMatch = imageContent.match(pureTagRegex);
-      const pureContent = pureTagMatch ? pureTagMatch[1].trim() : "";
-      tag = pureContent ? `${startTag}${pureContent}${endTag}` : "";
-      console.log(`[parseImagesFromPrompt] tagthinkEcho=false, \u4EC5\u63D0\u53D6\u7EAF tag: "${tag.substring(0, 50)}..."`);
-    } else {
-      tag = imageContent.replace(/regex:.*?(?:\n|$)/g, "").trim();
-      console.log(`[parseImagesFromPrompt] tagthinkEcho=true, \u4FDD\u7559\u5B8C\u6574\u5185\u5BB9: "${tag.substring(0, 50)}..."`);
-    }
-    console.log(`[parseImagesFromPrompt] \u5757 ${i + 1} \u7ED3\u679C: regex="${regexText.substring(0, 30)}...", tag="${tag.substring(0, 50)}..."`);
-    debugLog("imageInserter.parseImagesFromPrompt", `\u5757 ${i + 1} \u89E3\u6790\u7ED3\u679C`, {
-      \u7D22\u5F15: i + 1,
-      \u6709regex: !!regexText,
-      regex\u9884\u89C8: regexText ? regexText.substring(0, 40) : "(\u65E0)",
-      \u6709tag: !!tag,
-      tag\u957F\u5EA6: tag.length
-    });
-    if (regexText && tag) {
-      tag = tag.replace(/，/g, ",").replace(/；/g, ";").replace(/：/g, ":");
-      tag = tag.replace(/,\s*/g, ", ");
-      images.push({
-        regex: regexText,
-        tag
-      });
-      debugBranch("parseImagesFromPrompt", `\u5757 ${i + 1} \u6709\u6548 - \u5DF2\u6DFB\u52A0`, true);
-    } else {
-      debugBranch("parseImagesFromPrompt", `\u5757 ${i + 1} \u65E0\u6548 - \u8DF3\u8FC7`, true, {
-        \u539F\u56E0: !regexText ? "\u7F3A\u5C11regex" : "\u7F3A\u5C11tag"
-      });
-    }
-  }
-  console.log("[parseImagesFromPrompt] \u89E3\u6790\u5B8C\u6210\uFF0C\u5171", images.length, "\u4E2A\u6709\u6548\u56FE\u7247");
-  console.group("[parseImagesFromPrompt] \u89E3\u6790\u7ED3\u679C\u8BE6\u60C5");
-  for (let i = 0; i < images.length; i++) {
-    console.group(`\u56FE\u7247 ${i + 1}`);
-    console.log("regex:", images[i].regex);
-    console.log("tag \u5B8C\u6574\u5185\u5BB9:");
-    console.log(images[i].tag);
-    console.groupEnd();
-  }
-  console.groupEnd();
-  debugLog("imageInserter.parseImagesFromPrompt", "\u89E3\u6790\u5B8C\u6210", {
-    \u603B\u5757\u6570: imageBlocks.length,
-    \u6709\u6548\u56FE\u7247\u6570: images.length
-  });
-  timer.end(`\u89E3\u6790\u5230 ${images.length} \u4E2A\u6709\u6548\u56FE\u7247`);
-  if (imageBlocks.length > 0 && images.length === 0) {
-    toastr.warning(`LLM \u8F93\u51FA\u89E3\u6790\u5931\u8D25\uFF1A\u68C0\u6D4B\u5230 <image> \u6807\u7B7E\u4F46\u672A\u80FD\u89E3\u6790\u51FA\u6709\u6548\u6570\u636E\u3002\u8BF7\u68C0\u67E5 LLM \u8F93\u51FA\u683C\u5F0F\u662F\u5426\u5305\u542B regex: \u884C\u3002`);
-  }
-  return images;
+  return inspectPromptImages(text).images;
 }
-async function insertImagesIntoElement(rootElement, images) {
+function imageReplyOwner(el) {
+  if (!el) return null;
+  const mesText = findMesTextFromElement(el);
+  const id = Number.parseInt(mesText?.closest('.mes')?.getAttribute('mesid'), 10);
+  const message = chat[id];
+  if (!message) return null;
+  const swipe = message.swipe_id ?? 0;
+  return {id, message, isCurrent: () => chat[id] === message && (message.swipe_id ?? 0) === swipe};
+}
+function refreshImageDraftPanels(id) {
+  const selector = id != null && /^\d+$/.test(String(id)) ? `.mes[mesid="${id}"] .mes_text` : '#chat .mes[mesid] .mes_text';
+  for (const el of document.querySelectorAll(selector)) {
+    const owner = imageReplyOwner(el);
+    if (!owner) continue;
+    showImageDrafts(el, owner.message, {
+      isCurrent: owner.isCurrent, save: saveChatConditional,
+      promote: async (draft, text) => {
+        const writeOriginal = String(extension_settings11[extensionName]?.insertOriginalText) === 'true';
+        promoteImageDraft(owner.message, draft, text, getImageTags(), writeOriginal);
+        await saveChatConditional();
+        await renderMessage(owner.id);
+        refreshImageDraftPanels(owner.id);
+      }
+    });
+  }
+}
+function initImageDraftPanels() {
+  const refresh = id => requestAnimationFrame(() => refreshImageDraftPanels(id));
+  for (const type of ['CHARACTER_MESSAGE_RENDERED', 'USER_MESSAGE_RENDERED', 'MESSAGE_SWIPED', 'MESSAGE_UPDATED']) {
+    if (event_types[type]) eventSource4.on(event_types[type], refresh);
+  }
+  for (const type of ['CHAT_CHANGED', 'MORE_MESSAGES_LOADED']) {
+    if (event_types[type]) eventSource4.on(event_types[type], () => refresh());
+  }
+  refresh();
+}
+function showUnplacedReply(text) {
+  const dialog = document.createElement('dialog'), title = document.createElement('p');
+  title.textContent = '未找到原来的楼层。你可以复制本次绘图回复：';
+  const field = document.createElement('textarea'); field.readOnly = true; field.rows = 8; field.value = text;
+  const close = document.createElement('button'); close.textContent = '关闭'; close.onclick = () => dialog.close();
+  dialog.addEventListener('close', () => dialog.remove(), {once: true});
+  dialog.append(title, field, close); document.body.append(dialog); dialog.showModal();
+}
+async function insertImagesIntoElement(rootElement, images, allowFooter = false) {
   const timer = debugTimer("imageInserter.insertImagesIntoElement", "\u5C06\u56FE\u7247\u6807\u7B7E\u63D2\u5165\u5230 DOM");
   if (!rootElement || !images || images.length === 0) {
     debugBranch("insertImagesIntoElement", "\u8F93\u5165\u65E0\u6548 - \u8DF3\u8FC7", true, {
@@ -16631,7 +16291,7 @@ async function insertImagesIntoElement(rootElement, images) {
           mesId,
           mes\u957F\u5EA6: chat[mesId].mes.length
         });
-        await saveImageGroup(images, "", rootElement);
+        await saveImageGroup(images, "", rootElement, allowFooter);
         timer.end("insertOriginalText \u5FEB\u901F\u8DEF\u5F84\u5B8C\u6210");
         return;
       } else {
@@ -16680,7 +16340,10 @@ async function insertImagesIntoElement(rootElement, images) {
     logicalText += text;
     nodeInfos.push({ node: n, start, end: logicalText.length });
   }
-  if (logicalText.length === 0) return;
+  if (logicalText.length === 0) {
+    if (allowFooter) await saveImageGroup(images.map(img => ({...img, placement: "bottom", endIndex: 0})), "", rootElement, true);
+    return;
+  }
   if (firstDirectDiv && firstDivStartOffset !== -1) {
     console.log(`[insertImagesIntoElement] First <div> text range in logicalText: [${firstDivStartOffset}, ${firstDivEndOffset})`);
   }
@@ -16725,7 +16388,10 @@ async function insertImagesIntoElement(rootElement, images) {
     }
   }
   const matches = [];
+  const footerOffset = allowFooter ? imageFooterOffset(logicalText, rootElement, nodeInfos) : logicalText.length;
+  const placeAtBottom = image => matches.push({ endIndex: footerOffset, tag: image.tag, matchText: "", aiRegex: "", placement: "bottom" });
   for (const image of images) {
+    if (allowFooter && image.tag && (!image.regex || image.placement === "bottom")) { placeAtBottom(image); continue; }
     if (!image.regex || !image.tag) {
       debugBranch("insertImagesIntoElement", `\u8DF3\u8FC7\u65E0\u6548 image (\u7F3A\u5C11regex\u6216tag)`, true);
       continue;
@@ -16745,13 +16411,14 @@ async function insertImagesIntoElement(rootElement, images) {
       if (lineIndexInOriginal === -1 && !contentMatchDOM) {
         lineIndexInOriginal = logicalText.indexOf(matchedLine);
       }
-      if (lineIndexInOriginal === -1 && contentMatchDOM) continue;
+      if (lineIndexInOriginal === -1 && contentMatchDOM) { if (allowFooter) placeAtBottom(image); continue; }
       if (lineIndexInOriginal !== -1) {
         correctEndIndex = lineIndexInOriginal + matchedLine.length;
         console.log(`[insertImagesIntoElement] Remapped endIndex: ${matchResult.endIndex} -> ${correctEndIndex}`);
       } else {
         console.warn(`[insertImagesIntoElement] Could not find matched line in original logicalText, using original endIndex`);
       }
+      if (allowFooter && correctEndIndex > footerOffset) { placeAtBottom(image); continue; }
       matches.push({
         endIndex: correctEndIndex,
         tag: image.tag,
@@ -16774,6 +16441,7 @@ async function insertImagesIntoElement(rootElement, images) {
       debugBranch("insertImagesIntoElement", `\u6A21\u7CCA\u5339\u914D\u5931\u8D25`, true, {
         AI_regex: image.regex
       });
+      if (allowFooter) { placeAtBottom(image); continue; }
       console.warn("[insertImagesIntoElement] No fuzzy match found for:", image.regex);
       console.group("[insertImagesIntoElement] \u6A21\u7CCA\u5339\u914D\u8C03\u8BD5\u4FE1\u606F");
       console.log("\u76EE\u6807 regex:", image.regex);
@@ -16802,7 +16470,7 @@ async function insertImagesIntoElement(rootElement, images) {
   for (const match of matches) {
     const regexKey = match.aiRegex?.trim().toLowerCase();
     const tagKey = match.tag?.trim().toLowerCase();
-    if (regexKey && seenRegex.has(regexKey) || tagKey && seenTags.has(tagKey)) {
+    if ((!allowFooter && regexKey && seenRegex.has(regexKey)) || (tagKey && seenTags.has(tagKey))) {
       console.log(`[insertImagesIntoElement] Skipping duplicate - regex: "${match.aiRegex}", tag: "${match.tag}"`);
       continue;
     }
@@ -16824,17 +16492,19 @@ async function insertImagesIntoElement(rootElement, images) {
       endIndex: m.endIndex,
       regex: regexToSave,
       // 使用截取后的字符串作为 regex
-      tag: m.tag
+      tag: m.tag,
+      ...(m.placement ? { placement: m.placement } : {})
     };
   });
-  matches.sort((a, b) => b.endIndex - a.endIndex);
+  if (allowFooter) orderImageInsertions(matches, 'endIndex');
+  else matches.sort((a, b) => b.endIndex - a.endIndex);
   console.log("[insertImagesIntoElement] Found matches:", matches);
   if (!insertOriginalTextEnabled) {
     debugLog("imageInserter.insertImagesIntoElement", "\u975E insertOriginalText \u6A21\u5F0F - \u53EA\u4FDD\u5B58\u6570\u636E\uFF0C\u8DF3\u8FC7 DOM \u63D2\u5165", {
       \u5339\u914D\u6570\u91CF: matches.length
     });
     console.log("[insertImagesIntoElement] Non-insertOriginalText mode - saving data only, skipping DOM insertion");
-    await saveImageGroup(positionedImages, logicalText, rootElement);
+    await saveImageGroup(positionedImages, logicalText, rootElement, allowFooter);
     timer.end(`\u4FDD\u5B58 ${positionedImages.length} \u4E2A\u56FE\u7247\u6570\u636E\uFF08\u8DF3\u8FC7 DOM \u63D2\u5165\uFF09`);
     console.log("[insertImagesIntoElement] Saved image group with", positionedImages.length, "images (DOM insertion skipped)");
     return;
@@ -16919,7 +16589,7 @@ async function insertImagesIntoElement(rootElement, images) {
     \u8DF3\u8FC7: skippedCount,
     \u603B\u8BA1: matches.length
   });
-  await saveImageGroup(positionedImages, logicalText, rootElement);
+  await saveImageGroup(positionedImages, logicalText, rootElement, allowFooter);
   timer.end(`\u63D2\u5165 ${insertedCount} \u4E2A\u6807\u7B7E`);
   console.log("[insertImagesIntoElement] Saved image group with", positionedImages.length, "images");
 }
@@ -17007,7 +16677,7 @@ async function renderMessage(messageId) {
     messageId
   );
 }
-async function saveImageGroup(images, logicalText, el) {
+async function saveImageGroup(images, logicalText, el, allowFooter = false) {
   const timer = debugTimer("imageInserter.saveImageGroup", "\u4FDD\u5B58\u56FE\u7247\u7EC4\u4F4D\u7F6E\u4FE1\u606F");
   if (!images || images.length === 0) {
     debugBranch("saveImageGroup", "\u65E0\u56FE\u7247 - \u8DF3\u8FC7\u4FDD\u5B58", true);
@@ -17172,7 +16842,10 @@ async function saveImageGroup(images, logicalText, el) {
             console.log("[imageInserter] insertOriginalText: searchStartOffset (with <content>) =", searchStartOffset);
           }
           const matchResults = [];
+          const footerOffset = allowFooter ? imageFooterOffset(mes) : mes.length;
+          const placeAtBottom = img => matchResults.push({ endIndex: footerOffset, tag: img.tag, regex: img.regex || "", placement: "bottom" });
           for (const img of allImages) {
+            if (allowFooter && (img.placement === "bottom" || !img.regex)) { placeAtBottom(img); continue; }
             const matchResult = fuzzyMatchLine(mesForMatch, img.regex, 0.5);
             if (matchResult) {
               let correctEndIndex = matchResult.endIndex;
@@ -17183,7 +16856,7 @@ async function saveImageGroup(images, logicalText, el) {
                 console.log(`[imageInserter] insertOriginalText: Remapped endIndex: ${matchResult.endIndex} -> ${correctEndIndex} (searchFrom: ${searchStartOffset})`);
               } else {
                 const fallbackIndex = contentMatch ? -1 : mes.indexOf(matchedLine);
-                if (contentMatch && fallbackIndex === -1) continue;
+                if (contentMatch && fallbackIndex === -1) { if (allowFooter) placeAtBottom(img); continue; }
                 if (fallbackIndex !== -1) {
                   correctEndIndex = fallbackIndex + matchedLine.length;
                   console.warn(`[imageInserter] insertOriginalText: Fallback full search, endIndex: ${correctEndIndex}`);
@@ -17191,16 +16864,19 @@ async function saveImageGroup(images, logicalText, el) {
                   console.warn(`[imageInserter] insertOriginalText: Could not find matched line in original mes, using original endIndex`);
                 }
               }
+              if (allowFooter && correctEndIndex > footerOffset) { placeAtBottom(img); continue; }
               matchResults.push({
                 endIndex: correctEndIndex,
                 tag: img.tag,
                 regex: img.regex
               });
             } else {
-              console.warn("[imageInserter] No match found for regex:", img.regex.substring(0, 50));
+              if (allowFooter) placeAtBottom(img);
+              else console.warn("[imageInserter] No match found for regex:", img.regex?.substring(0, 50));
             }
           }
-          matchResults.sort((a, b) => b.endIndex - a.endIndex);
+          if (allowFooter) orderImageInsertions(matchResults, 'endIndex');
+          else matchResults.sort((a, b) => b.endIndex - a.endIndex);
           let insertedCount = 0;
           for (const match of matchResults) {
             const insertTag = `
@@ -17216,6 +16892,7 @@ async function saveImageGroup(images, logicalText, el) {
             });
           }
           chat[mesId].mes = mes;
+          if (allowFooter && Array.isArray(chat[mesId].swipes)) chat[mesId].swipes[chat[mesId].swipe_id ?? 0] = mes;
           const context = getContext();
           if (context.chat[mesId]?.extra?.images) {
             const swipeKey = context.chat[mesId].swipe_id ?? 0;
@@ -18262,20 +17939,13 @@ async function deleteTagForElement(el, tag) {
 function escapeRegExp(string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
-var IMAGES_OPEN_RE, IMAGES_CLOSE_RE, IMAGE_CLOSE_RE, REGEX_MARKER_RE, REGEX_MARKER_GLOBAL_RE, IMAGE_PROMPT_MARKER_RE, PROMPT_CLOSE_RE;
 var init_imageInserter = __esm({
   "utils/imageInserter.js"() {
     init_chatDataUtils();
     init_config();
     init_debugLogger();
     init_wordReplacement();
-    IMAGES_OPEN_RE = /<images>/i;
-    IMAGES_CLOSE_RE = /<\/images>|<\\images>/i;
-    IMAGE_CLOSE_RE = /<\/image>|<\\image>/gi;
-    REGEX_MARKER_RE = /regex\s*:/i;
-    REGEX_MARKER_GLOBAL_RE = /regex\s*:/gi;
-    IMAGE_PROMPT_MARKER_RE = /image###/i;
-    PROMPT_CLOSE_RE = /###/g;
+
   }
 });
 
@@ -38053,13 +37723,11 @@ __export(promptReq_exports, {
 });
 
 
-function buildParseFailureToastInfo(text, requestType) {
+function buildParseFailureToastInfo(text, requestType, imageParseResult) {
   const source = typeof text === "string" ? text.trim() : "";
   const isVideo = requestType === "visual_mat_prep";
+  if (!isVideo && imageParseResult?.totalBlocks) return imageReplyFailureInfo(imageParseResult);
   const typeName = isVideo ? "\u89C6\u9891" : "\u56FE\u7247";
-  const containerTag = isVideo ? "<Videos>" : "<images>";
-  const itemTagOpen = isVideo ? "<Video>" : "<image>";
-  const itemTagClose = isVideo ? "</Video>" : "</image>";
   if (!source) {
     return {
       level: "warning",
@@ -38074,6 +37742,7 @@ function buildParseFailureToastInfo(text, requestType) {
       message: `LLM \u5F53\u524D\u8FD4\u56DE\u7684\u662F\u201C\u5904\u7406\u4E2D/\u751F\u6210\u4E2D\u201D\u7684\u4E2D\u95F4\u6001\u6587\u672C\uFF0C\u8FD8\u4E0D\u662F\u6700\u7EC8${typeName}\u6807\u7B7E\u7ED3\u679C\u3002\u8BF7\u7B49\u5F85\u5B8C\u6210\u540E\u91CD\u8BD5\uFF0C\u6216\u68C0\u67E5\u63A5\u53E3\u662F\u5426\u652F\u6301\u8F6E\u8BE2\u6700\u7EC8\u7ED3\u679C\u3002`
     };
   }
+  if (!isVideo) return imageReplyFailureInfo(imageParseResult || inspectPromptImages(source));
   if (isVideo) {
     const hasNewVideoContainer = /<videos>/i.test(source);
     const newVideoBlocks = [...source.matchAll(/<video\b[^>]*>([\s\S]*?)<\/video>/gi)];
@@ -38132,46 +37801,8 @@ function buildParseFailureToastInfo(text, requestType) {
       message: "LLM \u8FD4\u56DE\u5185\u5BB9\u4E2D\u6CA1\u6709\u627E\u5230\u6709\u6548\u7684 <videos>/<video> \u6807\u7B7E\u6216 YAML videos \u5217\u8868\uFF0C\u65E0\u6CD5\u89E3\u6790\u89C6\u9891\u6570\u636E\u3002"
     };
   }
-  const containerRegex = /<images>/i;
-  const hasContainerBlock = containerRegex.test(source);
-  const itemRegex = /<image>([\s\S]*?)<\/image>/gi;
-  const itemBlocks = [...source.matchAll(itemRegex)];
-  if (hasContainerBlock && itemBlocks.length === 0) {
-    return {
-      level: "warning",
-      title: "\u56FE\u7247\u6807\u7B7E\u683C\u5F0F\u4E0D\u5B8C\u6574",
-      message: "LLM \u8FD4\u56DE\u4E86 <images> \u5BB9\u5668\uFF0C\u4F46\u91CC\u9762\u6CA1\u6709\u6709\u6548\u7684 <image> \u5757\u3002\u8BF7\u68C0\u67E5\u63D0\u793A\u8BCD\u662F\u5426\u8981\u6C42\u8F93\u51FA\u5B8C\u6574\u7684 <image>...</image> \u7ED3\u6784\u3002"
-    };
-  }
-  if (!hasContainerBlock && itemBlocks.length === 0) {
-    return {
-      level: "warning",
-      title: "\u672A\u627E\u5230\u56FE\u7247\u6807\u7B7E",
-      message: "LLM \u8FD4\u56DE\u5185\u5BB9\u4E2D\u6CA1\u6709 <images> \u6216 <image> \u6807\u7B7E\uFF0C\u56E0\u6B64\u65E0\u6CD5\u89E3\u6790\u56FE\u7247\u6570\u636E\u3002\u901A\u5E38\u662F\u6A21\u578B\u6CA1\u6709\u6309\u7EA6\u5B9A\u683C\u5F0F\u8F93\u51FA\u3002"
-    };
-  }
-  const missingRegexCount = itemBlocks.filter((match) => !/regex\s*:/i.test(match[1] || "")).length;
-  const missingTagCount = itemBlocks.filter((match) => !/image###/i.test(match[1] || "")).length;
-  if (missingRegexCount > 0 || missingTagCount > 0) {
-    const parts = [];
-    if (missingRegexCount > 0) {
-      parts.push(`${missingRegexCount} \u4E2A <image> \u7F3A\u5C11 regex: \u5B9A\u4F4D\u884C`);
-    }
-    if (missingTagCount > 0) {
-      parts.push(`${missingTagCount} \u4E2A <image> \u7F3A\u5C11 image### \u6807\u7B7E\u5185\u5BB9`);
-    }
-    return {
-      level: "warning",
-      title: "\u56FE\u7247\u6807\u7B7E\u683C\u5F0F\u9519\u8BEF",
-      message: `\u68C0\u6D4B\u5230 ${itemBlocks.length} \u4E2A <image> \u5757\uFF0C\u4F46\u683C\u5F0F\u4E0D\u5B8C\u6574\uFF1A${parts.join("\uFF1B")}\u3002\u8BF7\u68C0\u67E5 LLM \u8F93\u51FA\u662F\u5426\u540C\u65F6\u5305\u542B regex: \u548C image###...###\u3002`
-    };
-  }
-  return {
-    level: "warning",
-    title: `${typeName}\u6807\u7B7E\u89E3\u6790\u5931\u8D25`,
-    message: `\u68C0\u6D4B\u5230\u4E86${typeName}\u76F8\u5173\u6587\u672C\uFF0C\u4F46\u6700\u7EC8\u6CA1\u6709\u89E3\u6790\u51FA\u6709\u6548${typeName}\u6570\u636E\u3002\u8BF7\u68C0\u67E5 LLM \u8F93\u51FA\u7ED3\u6784\u662F\u5426\u5B8C\u6574\u3002`
-  };
 }
+
 function ensureVideoDemandAssetStyles(doc) {
   const styleId = "st-chatu8-video-demand-assets-style";
   if (doc.getElementById(styleId)) return;
@@ -38903,6 +38534,7 @@ async function processImageLikeRequest(el, gestureId, requestType, title, llmFun
   }
   toastr.info(`\u6B63\u5728\u5904\u7406${title}\u8BF7\u6C42...`);
   let context = getContext12();
+  const replyOwner = requestType === 'image_gen' ? imageReplyOwner(el) : null;
   const historyDepth = (extension_settings40[extensionName]?.llm_history_depth ?? 2) + 1;
   const keepImageTagInHistory = extension_settings40[extensionName]?.historyKeepImageTag === true;
   debugLog(requestType, "\u83B7\u53D6\u4E0A\u4E0B\u6587", {
@@ -39128,6 +38760,7 @@ async function processImageLikeRequest(el, gestureId, requestType, title, llmFun
   let images = [];
   let next_promt = "";
   let cleanedPrompt = "";
+  let imageParseResult;
   while (attempt <= maxRetries) {
     if (attempt > 0) {
       const retryMsg = `\u672A\u68C0\u6D4B\u5230\u6709\u6548${title}\u6807\u7B7E\uFF0C\u6B63\u5728\u8FDB\u884C\u7B2C ${attempt}/${maxRetries} \u6B21\u91CD\u8BD5...`;
@@ -39169,7 +38802,8 @@ async function processImageLikeRequest(el, gestureId, requestType, title, llmFun
     } else {
       debugLog(requestType, "\u89E3\u6790\u56FE\u7247\u6807\u7B7E");
       const parseTimer = debugTimer("parseImagesFromPrompt", "\u89E3\u6790\u56FE\u7247\u6807\u7B7E");
-      images = parseImagesFromPrompt(cleanedPrompt);
+      imageParseResult = inspectPromptImages(cleanedPrompt);
+      images = imageParseResult.images;
       parseTimer.end(`\u89E3\u6790\u5230 ${images.length} \u4E2A\u56FE\u7247\u6807\u7B7E`);
     }
     debugLog(requestType, "\u89E3\u6790\u5B8C\u6210", {
@@ -39186,10 +38820,24 @@ async function processImageLikeRequest(el, gestureId, requestType, title, llmFun
       }
       break;
     }
+    if (imageParseResult?.drafts.length) break;
     attempt++;
   }
-  if (images.length === 0) {
-    const toastInfo = buildParseFailureToastInfo(cleanedPrompt, requestType);
+  const drafts = imageParseResult?.drafts || [];
+  if (replyOwner && !replyOwner.isCurrent() && (images.length || drafts.length)) {
+    showUnplacedReply(cleanedPrompt);
+    return;
+  }
+  if (replyOwner && el?.isConnected === false) el = document.querySelector(`.mes[mesid="${replyOwner.id}"] .mes_text`);
+  if (drafts.length) {
+    if (replyOwner) {
+      retainImageDrafts(replyOwner.message, drafts);
+      await saveChatConditional();
+      refreshImageDraftPanels(replyOwner.id);
+    } else { showUnplacedReply(cleanedPrompt); }
+  }
+  if (images.length === 0 && !drafts.length) {
+    const toastInfo = buildParseFailureToastInfo(cleanedPrompt, requestType, imageParseResult);
     const toastLevel = toastr[toastInfo.level] ? toastInfo.level : "warning";
     toastr[toastLevel](toastInfo.message, toastInfo.title);
     debugBranch(requestType, "\u6807\u7B7E\u4E3A\u7A7A - \u5DF2\u63D0\u793A\u7528\u6237", true, {
@@ -39200,7 +38848,7 @@ async function processImageLikeRequest(el, gestureId, requestType, title, llmFun
   if (images.length > 0 && el) {
     debugLog(requestType, "\u63D2\u5165\u56FE\u7247\u6807\u7B7E\u5230 DOM");
     const insertTimer = debugTimer("insertImagesIntoElement", "\u63D2\u5165\u56FE\u7247\u6807\u7B7E");
-    await insertImagesIntoElement(el, images);
+    await insertImagesIntoElement(el, images, requestType === "image_gen");
     insertTimer.end("\u63D2\u5165\u5B8C\u6210");
     const autoClickEnabled = String(extension_settings40[extensionName]?.zidongdianji) === "true";
     if (autoClickEnabled) {
@@ -51916,7 +51564,9 @@ function extractPureTag(tag, startTag, endTag) {
   }
   return tag;
 }
-async function getSavedImageMatches(logicalText, rootElement, logicalTextForMatchOverride, firstDivEndOffset = 0) {
+async function getSavedImageMatches(logicalText, rootElement, logicalTextForMatchOverride, firstDivEndOffset = 0, nodeInfos) {
+  let footerOffset;
+  const footerMatch = img => ({ content: img.tag, placement: "bottom", insertPosition: footerOffset ??= imageFooterOffset(logicalText, rootElement, nodeInfos) });
   const result = [];
   try {
     const existingImage = rootElement.querySelector(`.st-chatu8-image-container`);
@@ -51954,6 +51604,7 @@ async function getSavedImageMatches(logicalText, rootElement, logicalTextForMatc
                 `button.image-tag-button[data-link="${CSS.escape(linkForQuery)}"], button.image-tag-button[data-image-tag="${CSS.escape(linkForQuery)}"]`
               );
               if (!existingButton && !textHasTag) {
+                if (img.placement === "bottom") { result.push(footerMatch(img)); continue; }
                 const matchResult = fuzzyMatchLine(logicalTextForMatch, img.regex, 0.5);
                 if (matchResult) {
                   let correctEndIndex = matchResult.endIndex;
@@ -52013,6 +51664,7 @@ async function getSavedImageMatches(logicalText, rootElement, logicalTextForMatc
                 `button.image-tag-button[data-link="${CSS.escape(linkForQuery)}"], button.image-tag-button[data-image-tag="${CSS.escape(linkForQuery)}"]`
               );
               if (!existingButton && !textHasTag) {
+                if (img.placement === "bottom") { result.push(footerMatch(img)); continue; }
                 const matchResult = fuzzyMatchLine(logicalTextForMatch, img.regex, 0.5);
                 if (matchResult) {
                   let correctEndIndex = matchResult.endIndex;
@@ -52068,7 +51720,7 @@ async function getSavedImageMatches(logicalText, rootElement, logicalTextForMatc
         `button.image-tag-button[data-link="${CSS.escape(linkForQuery)}"], button.image-tag-button[data-image-tag="${CSS.escape(linkForQuery)}"]`
       );
       if (!existingButton && !textHasTag) {
-        result.push({
+        result.push(img.placement === "bottom" ? footerMatch(img) : {
           content: img.tag,
           insertPosition: img.endIndex
         });
@@ -52498,7 +52150,7 @@ async function findAndReplaceInElement(rootElement, imageAlt = "Generated Image"
       // 标记为 pattern 匹配，需要替换原文本
     });
   }
-  const savedMatches = await getSavedImageMatches(logicalText, rootElement, logicalTextExcludingFirstDiv, firstDivEndOffset > 0 ? firstDivEndOffset : 0);
+  const savedMatches = await getSavedImageMatches(logicalText, rootElement, logicalTextExcludingFirstDiv, firstDivEndOffset > 0 ? firstDivEndOffset : 0, nodeInfos);
   if (patternMatches.length === 0 && savedMatches.length === 0) {
     notifyAutoClick(true);
     return;
@@ -52508,7 +52160,7 @@ async function findAndReplaceInElement(rootElement, imageAlt = "Generated Image"
   const shouldAutoClickBatch = isAutoClickEnabled && (window.zidongdianji || isPermanent);
   const clickPromises = [];
   const buttonsToAutoClick = [];
-  const sortedSavedMatches = [...savedMatches].sort((a, b) => b.insertPosition - a.insertPosition);
+  const sortedSavedMatches = savedMatches.some(row => row.placement === 'bottom') ? orderImageInsertions([...savedMatches], 'insertPosition') : [...savedMatches].sort((a, b) => b.insertPosition - a.insertPosition);
   for (const savedMatch of sortedSavedMatches) {
     const promise = createButtonAtPosition(
       savedMatch.insertPosition,
@@ -111082,6 +110734,7 @@ async function main() {
   initImageGenStatsListener();
   await initUI({ check_update });
   getWaveSpeedAdapter().mount();
+  initImageDraftPanels();
   getWaveSpeedAdapter().updateMode();
   initializeNewlineFixer();
   initializeTTS();

@@ -89,8 +89,16 @@ export function civitaiPaymentLabel(currency) {
   return ({ yellow: '仅黄 Buzz · 允许成熟内容', blue: '仅蓝 Buzz · 仅 SFW', green: '仅绿 Buzz · 仅 SFW', blue_green: '蓝＋绿 Buzz · 仅 SFW' })[currency] || '旧任务未记录币种';
 }
 
+// Civitai can identify one weight file within a version by appending +fileId.
+// Validate the identifier without rewriting it: pricing and generation must select the same file.
+function matchesCivitaiAir(air, types, ecosystem) {
+  if (typeof air !== 'string') return false;
+  const match = /^urn:air:([a-zA-Z0-9_-]+):([a-z]+):civitai:\d+@\d+(?:\+\d+)?$/.exec(air);
+  return !!match && types.includes(match[2]) && (!ecosystem || ecosystem === match[1]);
+}
+
 export function validateCivitai(model, params) {
-  if (typeof model !== 'string' || !/^urn:air:[a-zA-Z0-9_-]+:(?:checkpoint|model|diffusionmodel):civitai:\d+@\d+$/.test(model)) throw new AppError('Civitai 模型需要完整 AIR，例如 urn:air:sdxl:checkpoint:civitai:101055@128078。');
+  if (!matchesCivitaiAir(model, ['checkpoint', 'model', 'diffusionmodel'])) throw new AppError('Civitai 模型需要完整 AIR，例如 urn:air:sdxl:checkpoint:civitai:101055@128078；可在版本号后保留 +文件编号。');
   if (!plainObject(params) || JSON.stringify(params).length > 20000) throw new AppError('Civitai 参数必须是小于 20 KB 的 JSON 对象。');
   if (model.startsWith('urn:air:krea2:')) return validateKrea2(model, params);
   const allowed = new Set(['negativePrompt', 'width', 'height', 'steps', 'cfgScale', 'seed', 'scheduler', 'quantity', 'batchSize', 'clipSkip', 'outputFormat', 'additionalNetworks']);
@@ -106,7 +114,7 @@ export function validateCivitai(model, params) {
   if (params.additionalNetworks !== undefined) {
     if (!plainObject(params.additionalNetworks)) throw new AppError('additionalNetworks 必须是 AIR 到参数对象的映射。');
     for (const [air, network] of Object.entries(params.additionalNetworks)) {
-      if (!/^urn:air:[a-zA-Z0-9_-]+:(?:lora|locon|embedding):civitai:\d+@\d+$/.test(air) || !plainObject(network)) throw new AppError('附加网络需要 LoRA / LoCon / embedding 的完整 AIR。');
+      if (!matchesCivitaiAir(air, ['lora', 'locon', 'embedding']) || !plainObject(network)) throw new AppError('附加网络需要 LoRA / LoCon / embedding 的完整 AIR。');
       for (const key of Object.keys(network)) if (!['strength', 'triggerWord'].includes(key)) throw new AppError(`附加网络参数不支持 ${key}。`);
       if (network.strength !== undefined && !Number.isFinite(network.strength)) throw new AppError('LoRA strength 必须是数字。');
       if (network.triggerWord !== undefined) text(network.triggerWord, '触发词', 1000);
@@ -132,7 +140,7 @@ function validateKrea2(model, params) {
   if (params.loras !== undefined) {
     if (!plainObject(params.loras)) throw new AppError('Krea 2 loras 必须是 AIR 到权重数字的映射。');
     for (const [air, weight] of Object.entries(params.loras)) {
-      if (!/^urn:air:krea2:lora:civitai:\d+@\d+$/.test(air) || !Number.isFinite(weight)) throw new AppError('Krea 2 LoRA 需要同系列的完整 AIR 和有限数值权重。');
+      if (!matchesCivitaiAir(air, ['lora'], 'krea2') || !Number.isFinite(weight)) throw new AppError('Krea 2 LoRA 需要同系列的完整 AIR 和有限数值权重。');
     }
   }
   return { model, params: structuredClone(params) };

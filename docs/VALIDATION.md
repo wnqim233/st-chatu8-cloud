@@ -1,5 +1,14 @@
 # 验证记录
 
+## cloud.14 正文插图与文件级 AIR（2026-11-02）
+
+- 旧版在「5 个字段齐全、没有 `<images>` 外壳的 XML 图片块」用例中读到 0 个；两组 XML 容器只读到 1 组。旧校验也在本地拒绝了 `urn:air:krea2:diffusionmodel:civitai:958009@3139241+3019490`。
+- `node --test tests/*.test.mjs`：69 项通过。覆盖新版／旧版及混合格式、全角字段、自定义标记、思考段、角色 XML、真空块的最终单次警告、不可定位的图与缺损草稿、按 swipe 持久化和转为可用标签。用给定 AIR 核对保存后的配置与模拟预估、提交请求，两次工作流的 `diffusionModel` 都保留 `+3019490`。
+- `node scripts/check.mjs`：27 个 JS 文件语法、上游文件完整性及 4 个本次修改模块的指纹核对通过。
+- 本地浏览器打开 `tests/image-footer.html`：运行实际插图函数，分别验证插入原文、外挂按钮。测试回复有 5 段：1 张按原句定位，3 张放在末尾且顺序正确，1 段保留成可编辑草稿。实际刷新测试页后按钮顺序和已编辑草稿恢复；切换 swipe 未串楼。测试页用 localStorage 模拟酒馆聊天文件的保存与读取。
+- 本地浏览器在 `tests/settings-browser.html` 的「模型 AIR」输入框粘贴完整地址、保存并刷新，保存状态、输入框与展开的配置均保留文件编号。这部分使用扩展实际设置页与浏览器 IndexedDB。截图在 `test-results/cloud14/`。
+- 只读核对了 [Civitai 版本元数据](https://civitai.com/api/v1/model-versions/3139241)：该版本属于模型 958009、基础模型 Krea 2，列出编号为 3019490 的 Diffusion Model 文件。未连接用户手机、未取得该次 DS 原始回复，也未提交真实付费生图。
+
 ## cloud.13 云端页提示词替换（2026-10-16）
 
 - `node --test tests/*.test.mjs`：57 项全部通过。

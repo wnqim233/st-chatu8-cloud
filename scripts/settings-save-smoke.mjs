@@ -18,18 +18,23 @@ const snapshot = 'fixture.snapshot()';
 const screenshots = async name => { await evaluate("document.getElementById('ws-queue-summary').scrollIntoView({block:'start'})"); const shot = await call('Page.captureScreenshot'); await fs.writeFile(new URL(name, root), Buffer.from(shot.data, 'base64')); };
 try {
   await until("globalThis.fixture?.ready && !document.getElementById('ws-form').disabled", Boolean);
-  const a='urn:air:krea2:lora:civitai:100@200',b='urn:air:krea2:lora:civitai:101@201';
+  const model='urn:air:krea2:diffusionmodel:civitai:958009@3139241+3019490';
+  const a='urn:air:krea2:lora:civitai:100@200+300',b='urn:air:krea2:lora:civitai:101@201';
   const params={width:1024,height:1024,steps:10,cfgScale:1,sampler:'er_sde',scheduler:'beta',loras:{[a]:0.3,[b]:0.9}};
   const edit=async(id,value)=>evaluate(`(()=>{const el=document.getElementById(${JSON.stringify(id)});el.value=${JSON.stringify(value)};el.dispatchEvent(new Event('input',{bubbles:true}));})()`);
   // Invalid hidden WaveSpeed JSON must not block a valid Civitai save.
   await edit('ws-params','{broken');
+  await edit('ws-civitai-model',model);
   await edit('ws-civitai-params',JSON.stringify(params));
   assert.equal(await evaluate("document.getElementById('ws-save-state').textContent.includes('未保存')"),true);
   await evaluate("document.getElementById('ws-save').click()");
   const saved=await until('fixture.config()',c=>c.civitaiParams.steps===10);
+  assert.equal(saved.civitaiModel,model);
   assert.deepEqual(saved.civitaiParams.loras,params.loras);
   await evaluate('fixture.generateOne()');
   const first=await until(snapshot,s=>s.paid.length===1 && s.cache.length===1);
+  assert.equal(first.paid[0].body.steps[0].input.diffusionModel,model);
+  assert.deepEqual(first.lastQuoteSteps,first.paid[0].body.steps);
   assert.deepEqual(first.paid[0].body.steps[0].input.loras,params.loras);
   assert.equal(first.paid[0].body.steps[0].input.width,1024);
   // Deleting A and changing B without clicking Save must auto-save before POST.
@@ -55,6 +60,7 @@ try {
   await call('Page.reload',{ignoreCache:true});
   await until("globalThis.fixture?.ready && !document.getElementById('ws-form').disabled",Boolean);
   const restored=await evaluate('fixture.config()');assert.deepEqual(restored.civitaiParams.loras,{});
+  assert.equal(await evaluate("document.getElementById('ws-civitai-model').value"),model);
   assert.equal(await evaluate("JSON.parse(document.getElementById('ws-civitai-params').value).steps"),10);
   assert.equal(await evaluate("document.getElementById('ws-wavespeed-panel').hidden"),true);
   await call('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});

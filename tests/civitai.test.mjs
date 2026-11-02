@@ -145,6 +145,37 @@ test('Krea 2 validates its own limits, diffusionmodel AIR, raw variant and LoRA 
   assert.throws(() => validateCivitai(config.civitaiModel,{scheduler:'beta'}));
 });
 
+test('saving, estimating and submitting a file-specific Krea 2 AIR preserves the selected files', async t => {
+  const model = 'urn:air:krea2:diffusionmodel:civitai:958009@3139241+3019490';
+  const lora = 'urn:air:krea2:lora:civitai:123@456+789';
+  const custom = updateConfig(config, { civitaiModel: model, civitaiParams: { loras: { [lora]: 0.7 } } });
+  const { db } = await setup(t);
+  await db.saveConfig(custom);
+  const stored = await db.config();
+  assert.equal(stored.civitaiModel, model); assert.equal(portableConfig(stored).civitaiParams.loras[lora], 0.7);
+  const calls = [];
+  const service = new CivitaiService(db, { fetcher: async (url, opts) => {
+    calls.push([url, JSON.parse(opts.body)]);
+    return json(url.includes('whatif') ? {cost:{total:5}} : {id:'file-specific-model',status:'scheduled'});
+  } });
+  await service.submit(input(), stored);
+  assert.equal(calls.length, 2); assert.ok(calls[0][0].endsWith('?whatif=true'));
+  assert.deepEqual(calls[0][1].steps, calls[1][1].steps);
+  const step = calls[1][1].steps[0]; assert.equal(step.$type, 'imageGen');
+  assert.equal(step.input.diffusionModel, model); assert.deepEqual(step.input.loras, { [lora]: 0.7 });
+});
+
+test('a file ID is one optional numeric suffix; resource type and ecosystem restrictions still apply', () => {
+  const base = 'urn:air:krea2:diffusionmodel:civitai:958009@3139241';
+  for (const suffix of ['+', '+abc', '++1', '+1+2', '+1.5', '+1/path', '+1?other=2']) {
+    assert.throws(() => validateCivitai(base + suffix, {}), /AIR/);
+  }
+  assert.throws(() => validateCivitai(base, { loras: { 'urn:air:sdxl:lora:civitai:1@2+3': 0.7 } }), /LoRA/);
+  assert.throws(() => validateCivitai('urn:air:krea2:lora:civitai:1@2+3', {}), /AIR/);
+  const additionalNetworks = { 'urn:air:sdxl:lora:civitai:123@456+789': {strength:0.5} };
+  assert.deepEqual(validateCivitai(config.civitaiModel, {additionalNetworks}).params.additionalNetworks, additionalNetworks);
+});
+
 test('Buzz currency settings validate, export and default safely for old configurations', () => {
   assert.deepEqual(civitaiPayment(), { currencies: ['yellow'], allowMatureContent: true, upgradeMode: 'manual' });
   for (const value of ['', 'automatic', ['yellow'], null, 'blue,yellow']) assert.throws(() => updateConfig(config, { civitaiCurrency: value }), /币种/);

@@ -2,9 +2,9 @@
 
 本版本直接基于 [damoshen123/st-chatu8](https://github.com/damoshen123/st-chatu8) 的 `4e1e8f8a6cab1375d39eb806a292516dbb9c43be`，上游版本 3.1.0。
 
-修改者：Codex，受工作区所有者委托。首次修改：2026-09-19；最近修改：2026-10-16。原作者：从前跟你一样。沿用项目的 [Aladdin Free Public License](LICENSE)，原版权、声明、署名和许可证保留。分发或修改本版本须遵守该许可证；不提供额外保证。
+修改者：Codex，受工作区所有者委托。首次修改：2026-09-19；最近修改：2026-11-02。原作者：从前跟你一样。沿用项目的 [Aladdin Free Public License](LICENSE)，原版权、声明、署名和许可证保留。分发或修改本版本须遵守该许可证；不提供额外保证。
 
-本次修改目的：保留上游现有功能，作为独立前端扩展增加 WaveSpeed 和 Civitai 文生图支持；无需服务端插件。版本 3.1.0-cloud.13。
+本次修改目的：保留上游现有功能，作为独立前端扩展增加 WaveSpeed 和 Civitai 文生图支持；无需服务端插件。版本 3.1.0-cloud.14。
 
 | 上游文件 | 修改内容 |
 | --- | --- |
@@ -30,6 +30,12 @@
 初期独立原型已经退出交付版本，仅在工作目录 `backups/` 保存备份，不参与加载或安装包。最终安装包是本上游适配版本。
 
 Civitai 使用官方 v2 Orchestration 文生图接口，支持 Checkpoint AIR、LoRA、免费预估和预估 Buzz 上限。它复用 `shared/` 中的任务状态、查询和恢复逻辑，浏览器下载后调用原缓存接口。Key 放在当前浏览器独立 IndexedDB 中，不加入原配置导出。
+
+### cloud.14 正文插图恢复与 Civitai 文件编号（2026-11-02）
+
+正文图片回复改为逐段读取，兼容独立 XML、多组容器、旧式标记以及全角标点。能定位的图保留正文位置；缺少定位、无法匹配及可辨认的无标记绘图词按原顺序放在正文末尾。非空但无法解析的段落按楼层及 swipe 保存原文与可编辑草稿，不因解析失败重新请求整组内容，也不自动为草稿生图。错误只由请求层统一提示。新增 `shared/image-reply.js` 与 `shared/image-footer.js`；打包模块基线见 `docs/image-reply-modules-sha256.json`。
+
+Civitai 共用校验支持主模型及已有类型的附加资源带单个 `+数字文件编号`；不截断、不改变模型和预估／提交参数。依据 [Civitai 的 AIR 构造方法](https://github.com/civitai/civitai/blob/main/src/shared/utils/air.ts)。
 
 ### cloud.13 云端页提示词替换入口
 

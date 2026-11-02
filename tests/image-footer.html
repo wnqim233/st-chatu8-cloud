@@ -1,0 +1,63 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>楼底绘图回归测试</title><link rel="stylesheet" href="/wavespeed/style.css">
+<style>body{max-width:760px;margin:2rem auto;padding:0 1rem;background:#17212c;color:#f0ede5;font:16px/1.65 system-ui}header{color:#a2d9c9}article{padding:1em;background:#233240;margin-top:.75em}button{margin:.2em}content{display:block}small{display:block;color:#bbb}</style>
+<header>本地验证 · 不连接生图服务</header><strong id="result">正在验证…</strong>
+<div id="chat"><article class="mes" mesid="0"><div><div class="mes_text"></div></div></article></div>
+<script type="module">
+import {parseImageReply} from '../shared/image-reply.js';
+import {imageFooterOffset,orderImageInsertions,retainImageDrafts,promoteImageDraft,showImageDrafts} from '../shared/image-footer.js';
+const check = (ok, msg) => {if (!ok) throw Error(msg)};
+const result=document.querySelector('#result'), el=document.querySelector('.mes_text');
+try {
+  const bundle=await (await fetch('/index.js')).text(), settings={insertOriginalText:'true'};
+  const names=['getImageTags','removeThinkingText','removeThinkingTextOnly','fuzzyMatchLine','calculateLineSimilarity','calculateCharOverlapWithFrequency','calculateNgramSimilarity','findMesTextFromElement','insertAt','generateElKey2','saveImageGroup','insertImagesIntoElement','imageReplyOwner','refreshImageDraftPanels','getSavedImageMatches','getImageTags4','extractPureTag','findNodeAtPosition','createButtonAtPosition'];
+  const code=names.map(name=>{const i=new RegExp(`(?:async )?function ${name}\\(`).exec(bundle).index;return bundle.slice(i,bundle.indexOf('\n}',i)+2)}).join('\n');
+  const noop=()=>{}, chat=[], storage='cloud14-footer-regression';
+  const env={chat, imageFooterOffset,orderImageInsertions,retainImageDrafts,promoteImageDraft,showImageDrafts, extensionName:'test', getContext:()=>({chat}),getContext14:()=>({chat}),
+    console:{log:noop,group:noop,groupEnd:noop,warn:noop,error:console.error},debugTimer:()=>({end:noop}),debugBranch:noop,debugLog:noop,debugElement:noop,
+    saveChatConditional:async()=>localStorage.setItem(storage,JSON.stringify(chat[0])),renderMessage:async()=>{},getcharData:async()=>({}),
+    normalizePromptTag:s=>s.trim(),generateStableId:s=>s.replaceAll(' ','-'),getItemImg:async()=>[null],isGenerating:()=>false};
+  for(const key of new Set(code.match(/\bextension_settings\d*\b/g)||[]))env[key]={test:settings};
+  const api=Function(...Object.keys(env),code+'\nreturn {insertImagesIntoElement,getSavedImageMatches,createButtonAtPosition,refreshImageDraftPanels};')(...Object.values(env));
+  const story='\n她推开了窗。\n清晨的阳光落在水面上。岸边的小船还系在木桩上，船头随着水波轻轻起伏。远处有人推着自行车过桥，车铃响了一声。她靠在窗边等了一会儿，听见楼下的门打开，又听见几声脚步，慢慢朝湖边去了。\n';
+  const raw='<content>'+story+'</content><status>场景结束</status>';
+  const reply='<image>regex:她推开了窗。\nimage###open window###</image><image><prompts>silver lake</prompts></image><image><regex>zzzzzzzzzz</regex><prompts>early mist</prompts></image><image>old oak, warm light</image><image><unknown>残缺但还可以用的描写</unknown></image>';
+  const report=parseImageReply(reply);
+  const restoring=location.hash==='#restore';
+  if (!restoring) {
+  chat[0]={mes:raw,swipe_id:0,swipes:[raw]};el.textContent=raw;
+  await api.insertImagesIntoElement(el,report.images,true);
+  const body=chat[0].mes;
+  check(body.indexOf('open window')<body.indexOf('清晨')&&body.indexOf('open window')>body.indexOf('她推开了窗。'),'原文定位');
+  let last=body.lastIndexOf('清晨');
+  for(const tag of ['silver lake','early mist','old oak, warm light']){const at=body.indexOf(tag);check(at>last&&at<body.indexOf('</content>'),'原文楼底：'+tag);last=at;}
+  check(chat[0].swipes[0]===body,'原文保存到当前回复');
+  settings.insertOriginalText='false'; chat[0]={mes:raw,swipe_id:0};el.innerHTML=raw;
+  await api.insertImagesIntoElement(el,report.images,true);
+  check(chat[0].mes===raw && chat[0].extra.images[0].filter(row=>row.placement==='bottom').length===3,'外挂模式保留三张到底部');
+  retainImageDrafts(chat[0],report.drafts);await env.saveChatConditional();
+  }
+  settings.insertOriginalText='false';
+  chat[0]=JSON.parse(localStorage.getItem(storage));
+  el.innerHTML='<content>'+story+'风也停了。</content><small>场景结束</small>';
+  const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT),nodes=[];let text='',n;
+  while(n=walker.nextNode()){const start=text.length;text+=n.textContent;nodes.push({node:n,start,end:text.length})}
+  const saved=await api.getSavedImageMatches(text,el,text,0,nodes);
+  for(const row of orderImageInsertions(saved,'insertPosition'))await api.createButtonAtPosition(row.insertPosition,row.content,nodes,document,el,settings,false);
+  const buttons=[...el.querySelectorAll('button')];
+  check(buttons.map(b=>b.dataset.link).join('|')==='open window|silver lake|early mist|old oak, warm light','恢复后的按钮顺序');
+  check(buttons.every(b=>b.closest('content')),'所有图片在正文内，位于状态栏前');
+  check(buttons[1].previousSibling.textContent.includes('风也停了'),'楼底跟随正文末尾');
+  api.refreshImageDraftPanels(0);
+  const draft=document.querySelector('.chatu8-cloud-image-drafts');
+  check(draft && !el.contains(draft) && draft.querySelector('textarea').value===(restoring?'晚风吹过湖面':report.drafts[0]),'原文草稿恢复且不会被自动生图扫描');
+  draft.querySelector('summary').click();const input=draft.querySelector('textarea');input.value='晚风吹过湖面';
+  draft.querySelector('button').click();await Promise.resolve();
+  check(JSON.parse(localStorage.getItem(storage)).extra.chatu8CloudImageDrafts[0][0].text===input.value,'草稿编辑保存');
+  // A swipe must remove the old panel and restore it when the user returns.
+  chat[0].swipe_id=1;api.refreshImageDraftPanels(0);check(!document.querySelector('.chatu8-cloud-image-drafts'),'换页隐藏旧草稿');
+  chat[0].swipe_id=0;api.refreshImageDraftPanels(0);check(document.querySelector('.chatu8-cloud-image-drafts textarea').value==='晚风吹过湖面','切回原回复恢复草稿');
+  history.replaceState(null,'','#restore');
+  result.textContent=(restoring?'刷新恢复通过：':'验证通过：')+'1 张按原句插入，3 张按顺序放在正文底部，1 段草稿可编辑。';
+} catch(error){ result.textContent='失败：'+error.stack; console.error(error); }
+</script></html>

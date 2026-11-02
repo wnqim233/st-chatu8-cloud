@@ -1,0 +1,26 @@
+{
+  "version": "3.1.0-cloud.14",
+  "baseVersion": "3.1.0-cloud.13",
+  "modules": {
+    "utils/imageInserter.js": {
+      "beforeSha256": "a64268cf3d4264fe9f6e5de2a432688c54933f65ddd934bae5bdfa01d8dcc6d6",
+      "sha256": "459dc2bf3a1992403e08ca4ce80c19016a8dbb91c0758ec3b9f2bc0a57748a22",
+      "purpose": "Read mixed image replies, place unmatched tags at the end of the story and retain editable drafts for the active message and swipe."
+    },
+    "utils/promptReq.js": {
+      "beforeSha256": "e7f03327aec23ef5bda3a8acbff8a30a6185308edbd8d4deee1da9b811e05e5e",
+      "sha256": "ea30ed20673d78bc6d8798eae6fc1d0874acd4cfb69421670d4348a2e50ef198",
+      "purpose": "Use the parsed counts for final notifications; retain incomplete replies without retrying whole groups."
+    },
+    "utils/iframe/placeholder.js": {
+      "beforeSha256": "6836b30ac7289126148e25bb72c1a5cee20d96193eada554909eb4a33916a00b",
+      "sha256": "0d9f1c981623bc98e6f0dada56cb0e99c8c4bff5535b38e6b69b7a4c0b16a4ab",
+      "purpose": "Restore footer buttons at the current end of the story in their original order."
+    },
+    "index.js": {
+      "beforeSha256": "7ef6ff37aef3d7179bb7db685fa23d9256f7afe4a4ea122e397a43edbe39b596",
+      "sha256": "88f46df0db1f0274f211962214d5e54e716ba9f06bbd1cb6704e3615c815ba08",
+      "purpose": "Register draft restoration when the active chat or swipe changes."
+    }
+  }
+}

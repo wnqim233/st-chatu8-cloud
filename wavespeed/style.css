@@ -45,3 +45,8 @@
 #ch-tab-wavespeed button:disabled { opacity: .6; cursor: wait; }
 #ch-tab-wavespeed #prompt_replace_text_wavespeed { font-family: ui-monospace, monospace; font-size: 14px; line-height: 1.6; }
 #ch-tab-wavespeed #ws-prompt-replace-state[data-dirty=true] { color: #ffc66e; opacity: 1; }
+.chatu8-cloud-image-drafts { margin: .5em 0; }
+.chatu8-cloud-image-drafts details { margin: .4em 0; padding: .4em .6em; border-inline-start: 2px solid currentColor; }
+.chatu8-cloud-image-drafts summary { cursor: pointer; }
+.chatu8-cloud-image-drafts textarea { display: block; width: 100%; box-sizing: border-box; margin: .4em 0; }
+.chatu8-cloud-image-drafts button { margin-inline-end: .6em; }
