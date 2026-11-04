@@ -25,6 +25,8 @@ with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as archive:
     archive.write(root / 'INSTALL_WAVESPEED.md', '安装说明.md')
 with zipfile.ZipFile(target) as archive:
     assert archive.testzip() is None
+    for required in ['st-chatu8-cloud/wavespeed/characters.js', 'st-chatu8-cloud/docs/character-presets-sha256.json']:
+        assert required in archive.namelist(), required
     for required in ['st-chatu8-cloud/manifest.json', 'st-chatu8-cloud/index.js', 'st-chatu8-cloud/html/settings/send_data.html', 'st-chatu8-cloud/wavespeed/browser.js', 'st-chatu8-cloud/wavespeed/prompt-menu.js', 'st-chatu8-cloud/shared/jobs.js', 'st-chatu8-cloud/shared/image-reply.js', 'st-chatu8-cloud/shared/image-footer.js', 'st-chatu8-cloud/shared/krea-prompt.js', 'st-chatu8-cloud/docs/krea2-fix-sha256.json', 'st-chatu8-cloud/docs/llm-compat-modules-sha256.json', 'st-chatu8-cloud/LICENSE', '安装说明.md']:
         assert required in archive.namelist(), required
 digest = hashlib.sha256(target.read_bytes()).hexdigest()
@@ -39,6 +41,8 @@ with zipfile.ZipFile(source, 'w', zipfile.ZIP_DEFLATED) as archive:
             archive.write(file, str(Path('st-chatu8-source') / rel))
 with zipfile.ZipFile(source) as archive:
     assert archive.testzip() is None
+    for required in ['tests/character-presets.test.mjs', 'tests/character-presets-fixture.mjs', 'tests/character-presets-browser.html']:
+        assert 'st-chatu8-source/' + required in archive.namelist(), required
     for required in ['server/civitai.mjs', 'server/index.mjs', 'tests/civitai.test.mjs', 'tests/llm-compat.test.mjs', 'tests/llm-compat-fixture.mjs', 'tests/llm-compat-browser.html', 'tests/krea-prompt.test.mjs', 'tests/krea-browser.html', 'package.json', 'LICENSE']:
         assert 'st-chatu8-source/' + required in archive.namelist()
 digest = hashlib.sha256(source.read_bytes()).hexdigest()

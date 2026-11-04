@@ -1,0 +1,28 @@
+{
+  "baseVersion": "3.1.0-cloud.18",
+  "version": "3.1.0-cloud.19",
+  "files": {
+    "index.js": {
+      "beforeSha256": "daad884a85195f47364c5e7da6fe48fd15f04605e86cadede46c02fa279aea97",
+      "sha256": "dbacf66784ca8d9c0cdb6fc3d7a102df6e261c58cc52e4f22171ea9421584b1f",
+      "purpose": "Bind cloud preset expansion and add opt-in layout-preserving role resolution."
+    },
+    "wavespeed/adapter.js": {
+      "beforeSha256": "c8ca93a27fabea1d9ee2d87c0a86fe60a15d06b6ed3534259ab8fddb84f1e0f5",
+      "sha256": "4ba8d05325d1d04d417e0deb6dce82ad20902a7105bd3d2941eba32d7b23efa6",
+      "purpose": "Expand named presets before replacement and composition; copy actual prompt and scope collected negatives."
+    },
+    "wavespeed/characters.js": {
+      "beforeSha256": null,
+      "sha256": "49d69b9089d52ec97abec9e8b2bfc8d5f7c7c95f50095c3e58e81de1f200ceab",
+      "purpose": "Preserve shared resolver state while reusing upstream character and outfit presets."
+    }
+  },
+  "modules": {
+    "utils/characterprompt.js": {
+      "beforeSha256": "adf8096ecedf9d4b6e663b96367f9a18c7df8f3a811eaef2262ac92f00e14487",
+      "sha256": "29f4ab2d57f3cdf1e79dd8a13ccc77246e16edd89c63eed8cb624ac98c5e4118",
+      "purpose": "Optional cloud-only field resolution preserves multiline text and outfit angle; old default behavior remains."
+    }
+  }
+}

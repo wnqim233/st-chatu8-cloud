@@ -1,10 +1,11 @@
-/* Modified by Codex for the workspace owner, 2026-09-19; selected 3.1.6 fixes backported 2026-10-16; image reply parsing fixed 2026-11-02; prompt-copy menu and selected 3.1.7 compatibility backports added 2026-11-04.
+/* Modified by Codex for the workspace owner, 2026-09-19; selected 3.1.6 fixes backported 2026-10-16; image reply parsing fixed 2026-11-02; prompt-copy menu, selected 3.1.7 compatibility and cloud character preset integration added 2026-11-04.
  * Purpose: add WaveSpeed and Civitai backend hooks and settings; preserve upstream worldbook/LLM behavior.
  * Upstream: damoshen123/st-chatu8 @ 4e1e8f8a6cab1375d39eb806a292516dbb9c43be.
  * Licensed under the Aladdin Free Public License; see LICENSE and MODIFICATIONS.md.
  */
 import { createWaveSpeedAdapter } from "./wavespeed/adapter.js";
 import { bindPromptCopyMenu } from "./wavespeed/prompt-menu.js";
+import { expandCloudCharacters } from "./wavespeed/characters.js";
 import { parseImageReply, imageReplyFailureInfo } from "./shared/image-reply.js";
 import { imageFooterOffset, orderImageInsertions, retainImageDrafts, promoteImageDraft, showImageDrafts } from "./shared/image-footer.js";
 var waveSpeedAdapterInstance;
@@ -27,6 +28,7 @@ function getWaveSpeedAdapter() {
     eventTypes: EventType,
     initializeImages: initializeImageProcessing,
     cacheImage: setItemImg,
+    expandCharacters: prompt => expandCloudCharacters(prompt, processCharacterPrompt, window),
     replacePrompt: prompt_replace,
     replaceCharacter: prompt_replace_for_character,
     parseRoles: parsePromptStringWithCoordinates,
@@ -33118,13 +33120,13 @@ function findBestOutfitMatch(inputName, outfitPresets, enabledOutfits, allOutfit
   }
   return null;
 }
-function processCharacterPrompt(prompt2) {
+function processCharacterPrompt(prompt2, { preserveLayout = false, parseRoles = true } = {}) {
   if (!prompt2 || typeof prompt2 !== "string") {
     return prompt2;
   }
-  prompt2 = prompt2.replace(/\r?\n/g, ", ");
+  if (!preserveLayout) prompt2 = prompt2.replace(/\r?\n/g, ", ");
   window.collectedCharacterNegatives = "";
-  if (prompt2.includes("Scene Composition")) {
+  if (parseRoles && prompt2.includes("Scene Composition")) {
     console.log("[CharacterPrompt] \u68C0\u6D4B\u5230\u5206\u89D2\u8272\u6A21\u5F0F");
     return processMultiCharacterPrompt(prompt2);
   }
@@ -33196,8 +33198,11 @@ function processCharacterPrompt(prompt2) {
       const normalizedCharacterName = normalizeName(jsonData.name);
       const cameraAngle = jsonData.angle;
       const isFromBehind = cameraAngle.toLowerCase().includes("from behind");
-      sharedCameraAngle = cameraAngle;
-      sharedIsFromBehind = isFromBehind;
+      // A cloud role's outfit marker inherits its character's viewing angle.
+      if (jsonData.hasAngle || !preserveLayout) {
+        sharedCameraAngle = cameraAngle;
+        sharedIsFromBehind = isFromBehind;
+      }
       const upperState = jsonData.upperBody.toLowerCase();
       const lowerState = jsonData.lowerBody.toLowerCase();
       if (jsonData.hasAngle) {
@@ -33358,6 +33363,7 @@ function processCharacterPrompt(prompt2) {
     }
     return match;
   });
+  if (preserveLayout) return processedPrompt;
   let finalPrompt = processedPrompt.replace(/\r?\n/g, ", ");
   return finalPrompt.replace(/, \s*,/g, ",").replace(/,+/g, ",").replace(/^, |, $/g, "").trim();
 }

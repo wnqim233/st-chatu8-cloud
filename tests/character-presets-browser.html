@@ -1,0 +1,32 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>角色预设导入与云端生图验证</title><link rel="stylesheet" href="/wavespeed/style.css">
+<style>body{margin:20px auto;max-width:1000px;padding:0 20px;background:#17212c;color:#eef0f7;font:16px/1.6 system-ui}button{padding:12px 20px;border:0;border-radius:8px;background:#6176bc;color:white;font:inherit}textarea{width:100%;box-sizing:border-box;font:15px/1.5 system-ui;padding:12px}label{display:block;margin-top:12px}#status{color:#b0e0c1}section{border:1px solid #61728a;border-radius:12px;padding:16px;margin:14px 0}select{padding:8px;font:inherit}</style>
+<h1>角色预设接入验证</h1><p>独立本地测试。使用插件原有导入器和角色解析；不提交付费生图。</p>
+<button id="import">导入角色预设</button> <select id="character_preset_id" aria-label="已导入的角色"></select>
+<p id="status" role="status">等待导入</p><p id="count">模拟生成提交次数：0</p>
+<section><label>角色特征<textarea id="char_characterTraits" rows="3" readonly></textarea></label><label>五官外貌<textarea id="char_facialFeatures" rows="3" readonly></textarea></label></section>
+<section><label>生图原文<textarea id="raw" rows="4">请先导入角色</textarea></label><button id="generate">生成图片（模拟）</button></section>
+<label>长按复制得到的实际提示词<textarea id="copied" rows="7" readonly></textarea></label>
+<script type="module">
+import {createWaveSpeedAdapter} from '../wavespeed/adapter.js';
+import {expandCloudCharacters} from '../wavespeed/characters.js';
+import {bindPromptCopyMenu} from '../wavespeed/prompt-menu.js';
+const el=id=>document.getElementById(id),noop=()=>{},settings={mode:'civitai',characterPresets:{},outfitPresets:{}},notice=text=>el('status').textContent=text;
+const source=await(await fetch('/index.js')).text(),fn=name=>{const m=new RegExp('(?:async )?function '+name+'\\(').exec(source);return source.slice(m.index,source.indexOf('\n}',m.index)+2)};
+const readFields=key=>{for(const name of ['characterTraits','facialFeatures'])el('char_'+name).value=settings.characterPresets[key][name]||'';const name=settings.characterPresets[key].nameCN;el('raw').value='A car cabin at dusk.\n$'+name+'-sfw-upperbody$, wearing a white shirt, seated in the passenger seat.';el('generate').dataset.link=el('raw').value;};
+const save=()=>sessionStorage.setItem('cloud19-character-fixture',JSON.stringify(settings.characterPresets));
+const scope={CHARACTER_CONFIG_SCHEMA_VERSION:2,extensionName:'st-chatu8-cloud',extension_settings28:{'st-chatu8-cloud':settings},extension_settings29:{'st-chatu8-cloud':settings},alert:notice,saveSettingsDebounced21:save,loadCharacterPresetData:readFields,loadOutfitPresetList:noop};
+const functions=['normalizeName','calculateMatchScore','collectCharacterCandidates','collectOutfitCandidates','findBestCharacterMatch','findBestOutfitMatch','processCharacterPrompt','collectNegativeToGlobal','normalizeCharacterPreset','normalizeMediaEntry','isEncryptedData','decryptImportData','loadCharacterPresetList','importCharacterPreset'];
+// Only the plain JSON preset path is exercised; no external media are imported.
+const available=functions.filter(name=>new RegExp('(?:async )?function '+name+'\\(').test(source));
+const runtime=Function(...Object.keys(scope),available.map(fn).join('\n')+';return {importCharacterPreset,processCharacterPrompt,loadCharacterPresetList}')( ...Object.values(scope));
+el('import').onclick=runtime.importCharacterPreset;
+const history=[],config={civitaiModel:'urn:air:krea2:diffusionmodel:civitai:100@200',civitaiParams:{width:1024,height:1024,steps:8,cfgScale:1,scheduler:'simple'},dimensionSource:'json'};let count=0;
+const api=async(route,body)=>{if(route==='/config')return config;if(route==='/jobs'&&!body)return history;if(route==='/jobs'){el('count').textContent='模拟生成提交次数：'+(++count);history.unshift({...body,status:'failed',createdAt:Date.now(),error:'模拟失败：可以长按复制',images:[]});return history[0]}throw Error('Unexpected route')};
+const adapter=createWaveSpeedAdapter({api,expandCharacters:p=>expandCloudCharacters(p,runtime.processCharacterPrompt,window),settings:()=>settings,context:()=>({chatId:'character-fixture'}),saveSettings:noop,replacePrompt:async p=>({modifiedPrompt:p,insertions:{}}),replaceCharacter:p=>p,composePrompt:async(a,b,c)=>[a,b,c].filter(Boolean).join(', '),taskQueue:{addTask:()=>1,updateStatus:noop,completeTask:noop},record:noop,log:noop,eventTypes:{GENERATE_IMAGE_RESPONSE:'response'},events:{emit:(_e,v)=>notice(v.error),on:noop,removeListener:noop}});
+const realCopy=Function(fn('copyText')+';return copyText')();
+const bind=Function('bindPromptCopyMenu','getWaveSpeedAdapter','copyText','toastr','triggerGeneration',fn('bindGenerationPromptMenu')+';return bindGenerationPromptMenu')(bindPromptCopyMenu,()=>adapter,async(doc,text)=>{el('copied').value=text;return realCopy(doc,text)},{success:notice,warning:notice},button=>adapter.generate({id:'fixture-'+Date.now(),prompt:button.dataset.link}));
+bind(el('generate'));el('raw').oninput=()=>el('generate').dataset.link=el('raw').value;
+el('character_preset_id').onchange=()=>readFields(el('character_preset_id').value);
+const saved=sessionStorage.getItem('cloud19-character-fixture');if(saved){settings.characterPresets=JSON.parse(saved);settings.characterPresetId=Object.keys(settings.characterPresets)[0];runtime.loadCharacterPresetList();readFields(settings.characterPresetId);notice('刷新后角色预设已恢复');}
+</script></html>

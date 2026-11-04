@@ -62,19 +62,28 @@ export function createWaveSpeedAdapter(deps) {
     let main = original;
     let other = '';
     let roles;
+    const characterNegatives = new Set();
+    const expand = text => {
+      if (!deps.expandCharacters) return text;
+      const result = deps.expandCharacters(text);
+      if (result.negative?.trim()) characterNegatives.add(result.negative.trim());
+      return result.prompt;
+    };
     const krea2 = config.imageModel?.startsWith('urn:air:krea2:');
     if (krea2) roles = parseKrea2Roles(original);
     else if (original?.includes('Scene Composition')) roles = deps.parseRoles(original);
     if (roles) {
       main = krea2 ? roles['Scene Composition'] : roles['Scene Composition'] || original;
+      for (let i = 1; i <= 4; i++) if (roles[`Character ${i} Prompt`]) roles[`Character ${i} Prompt`] = expand(roles[`Character ${i} Prompt`]);
       other = [1, 2, 3, 4].map(i => roles[`Character ${i} Prompt`] || '').join(', ');
     }
+    main = expand(main);
     const { modifiedPrompt, insertions } = await deps.replacePrompt(main, other);
     let replaced = modifiedPrompt;
     if (roles) for (let i = 1; i <= 4; i++) if (roles[`Character ${i} Prompt`]) replaced += `${krea2 ? '\n\n' : ' | '}${deps.replaceCharacter(roles[`Character ${i} Prompt`], `${main} ${other}`)}`;
-    const composed = await deps.composePrompt(config.fixedPrompt, replaced, config.fixedPromptEnd, '', insertions);
+    const composed = await deps.composePrompt(expand(config.fixedPrompt), replaced, expand(config.fixedPromptEnd), '', insertions);
     const prompt = krea2 ? cleanKrea2Prompt(composed) : composed;
-    const negative = [config.negativePrompt, request.negative_prompt].filter(Boolean).join(', ');
+    const negative = [config.negativePrompt, request.negative_prompt, ...characterNegatives].filter(Boolean).join(', ');
     return { prompt, params: mapParameters(config, request, negative) };
   }
 
