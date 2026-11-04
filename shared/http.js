@@ -30,7 +30,15 @@ export async function jsonRequest(fetcher, url, options = {}, timeout = 60000, l
     let data;
     try { data = JSON.parse(raw); } catch { throw new AppError(`远程返回了非 JSON 响应（HTTP ${response.status}），请检查 API 地址。`, 502); }
     if (!response.ok) {
-      const detail = typeof data.error === 'string' ? data.error : data.error?.message || data.message || '';
+      const details = [typeof data?.error === 'string' ? data.error : data?.error?.message, data?.message, data?.detail, data?.title];
+      if (data?.errors && typeof data.errors === 'object' && !Array.isArray(data.errors)) {
+        for (const [field, messages] of Object.entries(data.errors)) {
+          for (const message of Array.isArray(messages) ? messages : [messages]) {
+            if (typeof message === 'string') details.push(`${field}: ${message}`);
+          }
+        }
+      }
+      const detail = [...new Set(details.filter(value => typeof value === 'string' && value.trim()))].join('；').slice(0, 2000);
       const error = new AppError(`API 请求失败（HTTP ${response.status}）${detail ? `：${detail}` : ''}`, response.status === 429 ? 429 : 502);
       error.upstreamStatus = response.status;
       throw error;

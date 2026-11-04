@@ -30,6 +30,31 @@ export function createWaveSpeedAdapter(deps) {
 
   const editor = createSettingsEditor({ api, deps, $, notify, onModeChanged: updateMode });
 
+  function currentChatId() {
+    const ctx = deps.context();
+    return JSON.stringify([ctx.groupId ?? ctx.characters?.[ctx.characterId]?.avatar ?? 'chat', ctx.getCurrentChatId?.() ?? ctx.chatId ?? 'manual']);
+  }
+
+  async function promptForCopy(request) {
+    const original = request.change?.trim() || request.prompt || '';
+    if (!original.trim()) return { text: '' };
+    try {
+      const chatId = currentChatId();
+      const history = await api('/jobs');
+      const match = history.filter(job => job.source?.chatId === chatId && job.cacheTag === request.prompt &&
+        (job.change?.trim() || job.cacheTag) === original && job.prompt?.trim())
+        .sort((a, b) => b.createdAt - a.createdAt)[0];
+      if (match) return { text: match.prompt, actual: true };
+      const provider = deps.settings().mode;
+      if (!['wavespeed', 'civitai'].includes(provider)) return { text: original };
+      const { prompt } = await prepare(request, providerConfig(await api('/config'), provider));
+      return { text: prompt };
+    } catch {
+      // Even inaccessible task storage must not strand the user's original prompt.
+      return { text: original, fallback: true };
+    }
+  }
+
   async function prepare(request, config) {
     const original = request.change?.trim() || request.prompt;
     if (/\{(?:视频|修图|局部重绘)\}/.test(original || '')) throw new Error('当前接口是文生图；请切换原插件的编辑或视频后端处理此请求。');
@@ -86,8 +111,7 @@ export function createWaveSpeedAdapter(deps) {
     let taskId;
     let taskState;
     try {
-      const ctx = deps.context();
-      const chatId = JSON.stringify([ctx.groupId ?? ctx.characters?.[ctx.characterId]?.avatar ?? 'chat', ctx.getCurrentChatId?.() ?? ctx.chatId ?? 'manual']);
+      const chatId = currentChatId();
       taskId = deps.taskQueue.addTask({ name: `${label} 生图`, type: provider, prompt: request.prompt });
       taskState = { job: null, cancelled: false, status: 'queued' };
       cloudTasks.set(taskId, taskState);
@@ -292,5 +316,5 @@ export function createWaveSpeedAdapter(deps) {
     const config = await api('/config', portableConfig(backup.config));
     editor.imported(config);
   }
-  return { updateMode, mount, generate, restore, prepare, exportConfig, importConfig };
+  return { updateMode, mount, generate, restore, prepare, promptForCopy, exportConfig, importConfig };
 }

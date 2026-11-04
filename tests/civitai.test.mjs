@@ -9,6 +9,7 @@ import { CivitaiService, workflowBody, normalizeWorkflow } from '../server/civit
 import { createHandlers } from '../server/index.mjs';
 import { mapParameters, providerConfig } from '../wavespeed/client.js';
 import { civitaiPayment, portableConfig } from '../shared/config.js';
+import { jsonRequest } from '../shared/http.js';
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status });
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aSUcAAAAASUVORK5CYII=', 'base64');
@@ -71,6 +72,96 @@ test('Civitai failure states are terminal; available images only; invalid snapsh
   for (const status of ['failed', 'expired', 'canceled']) assert.equal(normalizeWorkflow({ id: 'w', status }).status, 'failed');
   assert.throws(() => normalizeWorkflow({}), /响应无效/);
   assert.deepEqual(normalizeWorkflow({ id: 'w', status: 'succeeded', steps: [{ output: { images: [{ available: false, url: 'blocked' }, { available: true, url: 'ok' }] } }] }).outputs, ['ok']);
+});
+
+test('Civitai download retry refreshes the original signed URL after reopening, without another paid request', async t => {
+  const { db } = await setup(t); let time = 1000, paid = 0, queries = 0;
+  const downloads = [];
+  const options = { now: () => time, checkUrl: async () => {}, fetcher: async (url, opts) => {
+    if (url.includes('whatif')) return json({ cost: { total: 15 } });
+    if (opts.method === 'POST') { paid++; return json({ id: 'existing-workflow', status: 'scheduled' }); }
+    if (url.includes('/workflows/')) {
+      queries++;
+      return json({ id: 'existing-workflow', status: 'succeeded', steps: [{ output: { images: [{ id: 'image.jpg', available: true, url: `https://images.example/image.jpg?sig=${queries}` }] } }] });
+    }
+    downloads.push(url); assert.equal(opts.headers, undefined);
+    return queries === 1 ? new Response('Expired signature', { status: 403 }) : new Response(png);
+  } };
+  const service = new CivitaiService(db, options);
+  const submitted = await service.submit(input(), config); time += 3000;
+  assert.equal((await service.refresh(submitted.id, config)).status, 'download_failed');
+  time += 11000;
+  const restored = await new CivitaiService(db, options).refresh(submitted.id, config);
+  assert.equal(restored.status, 'completed'); assert.equal(restored.taskId, 'existing-workflow');
+  assert.equal(paid, 1); assert.equal(queries, 2);
+  assert.deepEqual(downloads, ['https://images.example/image.jpg?sig=1', 'https://images.example/image.jpg?sig=2']);
+});
+
+test('Civitai refresh preserves partially saved legacy jobs when blob order and signatures change', async t => {
+  const { db } = await setup(t); let time = 1000, queries = 0;
+  const downloads = [];
+  const image = (id, sig) => ({ id, available: true, url: `https://images.example/${id}?sig=${sig}` });
+  const service = new CivitaiService(db, { now: () => time, checkUrl: async () => {}, fetcher: async (url, opts) => {
+    if (url.includes('whatif')) return json({ cost: { total: 15 } });
+    if (opts.method === 'POST') return json({ id: 'partial-workflow', status: 'scheduled' });
+    if (url.includes('/workflows/')) {
+      queries++;
+      return json({ id: 'partial-workflow', status: 'succeeded', steps: [{ output: { images: queries === 1 ? [image('a.jpg', 1), image('b.jpg', 1)] : [image('b.jpg', 2), image('a.jpg', 2)] } }] });
+    }
+    downloads.push(url);
+    return url.endsWith('b.jpg?sig=1') ? new Response('', { status: 403 }) : new Response(png);
+  } });
+  const submitted = await service.submit(input(), config); time += 3000;
+  const partial = await service.refresh(submitted.id, config);
+  assert.equal(partial.status, 'download_failed'); assert.ok(partial.images[0]);
+  const first = partial.images[0]; delete partial.outputKeys; await db.saveJob(partial);
+  time += 11000;
+  const done = await service.refresh(partial.id, config);
+  assert.equal(done.status, 'completed'); assert.equal(done.images[0], first);
+  assert.equal(new Set(done.images).size, 2);
+  assert.deepEqual(downloads, ['https://images.example/a.jpg?sig=1', 'https://images.example/b.jpg?sig=1', 'https://images.example/b.jpg?sig=2']);
+  for (const file of done.images) assert.deepEqual(await fs.readFile(path.join(db.imageDir, path.basename(file))), png);
+});
+
+test('Civitai download recovery reports an expired original task and stops downloading', async t => {
+  const { db } = await setup(t); let downloads = 0, queries = 0;
+  const job = { ...input(), status: 'download_failed', taskId: 'expired-workflow', images: [], outputs: ['https://images.example/old.jpg'], nextPollAt: 0 };
+  await db.saveJob(job);
+  const service = new CivitaiService(db, { fetcher: async url => {
+    if (!url.includes('/workflows/')) { downloads++; throw new Error('Must not download an expired task'); }
+    queries++;
+    return json({ id: job.taskId, status: 'expired', cost: { total: 0 }, steps: [{ output: { images: [{ available: false, url: job.outputs[0] }] } }] });
+  } });
+  const result = await service.refresh(job.id, config);
+  assert.equal(result.status, 'failed'); assert.match(result.error, /原任务已超时/);
+  assert.equal(result.warning, ''); assert.equal(result.buzzCost.total, 0);
+  await service.refresh(job.id, config);
+  assert.equal(queries, 1); assert.equal(downloads, 0);
+});
+
+test('Civitai failed URL refresh keeps saved images and does not retry a stale download', async t => {
+  const { db } = await setup(t); let calls = 0;
+  const job = { ...input(), status: 'download_failed', taskId: 'original-workflow', images: ['saved-a'], outputs: ['https://images.example/a.jpg'], nextPollAt: 0 };
+  await db.saveJob(job);
+  const service = new CivitaiService(db, { fetcher: async url => {
+    calls++; assert.ok(url.includes('/workflows/original-workflow'));
+    return json({ title: 'Forbidden', detail: `Resource access denied ${config.civitaiKey}` }, 403);
+  } });
+  const result = await service.refresh(job.id, config);
+  assert.equal(result.status, 'download_failed'); assert.deepEqual(result.images, ['saved-a']);
+  assert.match(result.error, /Resource access denied/); assert.ok(!result.error.includes(config.civitaiKey));
+  assert.equal(calls, 1);
+});
+
+test('Civitai ProblemDetails exposes field validation and permission details, retaining upstream status', async () => {
+  await assert.rejects(jsonRequest(async () => json({ title: 'Validation failed', detail: 'Invalid image parameters', errors: { 'steps[0].input.width': ['Width must be a multiple of 64.'] } }, 400), 'https://api.example'), error => {
+    assert.equal(error.upstreamStatus, 400);
+    assert.match(error.message, /Invalid image parameters/);
+    assert.match(error.message, /steps\[0\]\.input\.width: Width must be a multiple of 64/);
+    return true;
+  });
+  await assert.rejects(jsonRequest(async () => json(null, 403), 'https://api.example'), /HTTP 403/);
+  assert.equal(normalizeWorkflow({ status: 'processing', steps: [{ output: { images: [{ available: false }] } }] }).warning, '');
 });
 
 test('Civitai AIR, LoRA, negative prompt and dimensions follow v2 field names; secrets remain server-side', () => {

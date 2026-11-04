@@ -9,7 +9,8 @@ function cleanReply(text) {
   return (typeof text === 'string' ? text : '')
     .replace(/<\\(images?|regex|prompts|scene_composition|character_\d+|prompt|centers|uc|size|title_styled|tag_think)\s*>/gi, '</$1>')
     .replace(/<!--[^]*?(?:-->|$)/g, '')
-    .replace(/<(think|thinking|thought)\b[^>]*>[^]*?(?:<\/\1\s*>|$)/gi, '');
+    .replace(/<(think|thinking|thought|assistant_trace|trace|pipeline_trace|video_asset_think|motion_trajectory|latent_analysis)\b[^>]*>[^]*?(?:<\/\1\s*>|$)/gi, '')
+    .replace(/(^|\n)[ \t]*```(?:bash|sh|console|linux|terminal)[^\n]*\n[^]*?(?:\n[ \t]*```(?=\s*(?:\n|$))|$)/gi, '$1');
 }
 
 const displayFields = /<(tag_think|font|title_styled)\b[^>]*>[^]*?(?:<\/\1\s*>|$)/gi;

@@ -2,10 +2,18 @@
  * Contract: https://orchestration.civitai.com/openapi/v2-consumers.json
  * Reuses the WaveSpeed job journal, recovery, downloader and per-user isolation.
  */
-import { AppError, text, plainObject, validateCivitai, civitaiPayment, civitaiPaymentLabel } from './config.js';
+import { AppError, text, plainObject, validateCivitai, civitaiPayment, civitaiPaymentLabel, safeError } from './config.js';
 import { authHeaders, jsonRequest } from './http.js';
 
 const API = 'https://orchestration.civitai.com/v2/consumer/workflows';
+
+function outputKey(url, id) {
+  if (typeof id === 'string' && id) return id;
+  // Older journals retained only URLs. Civitai blob paths end with the blob ID;
+  // query signatures can change whenever the original workflow is fetched.
+  try { return decodeURIComponent(new URL(url).pathname.split('/').filter(Boolean).at(-1)); }
+  catch { return url; }
+}
 
 export function workflowBody(job, estimate = false) {
   const krea2 = job.model.startsWith('urn:air:krea2:');
@@ -33,19 +41,25 @@ export function workflowBody(job, estimate = false) {
 export function normalizeWorkflow(value) {
   if (!plainObject(value) || typeof value.status !== 'string') throw new AppError('Civitai 工作流响应无效，请到平台核对任务。', 502);
   const outputs = [];
+  const outputKeys = [];
   const blocked = [];
+  const addOutput = blob => {
+    if (outputs.includes(blob.url)) return;
+    outputs.push(blob.url); outputKeys.push(outputKey(blob.url, blob.id));
+  };
   for (const step of value.steps || []) {
     for (const blob of [...(step.output?.images || []), ...(step.output?.blobs || [])]) {
-      if (blob.available === false || blob.blockedReason) blocked.push(blob.blockedReason || '图片不可用，可能被内容规则扣留');
+      if (blob.blockedReason || (value.status === 'succeeded' && blob.available === false)) blocked.push(blob.blockedReason || '图片不可用，平台未给出原因');
     }
-    for (const image of step.output?.images || []) if (image.available && typeof image.url === 'string') outputs.push(image.url);
-    for (const blob of step.output?.blobs || []) if (blob.available === true && typeof blob.url === 'string' && (blob.type === 'image' || (blob.mimeType || '').startsWith('image/'))) outputs.push(blob.url);
+    for (const image of step.output?.images || []) if (image.available && typeof image.url === 'string') addOutput(image);
+    for (const blob of step.output?.blobs || []) if (blob.available === true && typeof blob.url === 'string' && (blob.type === 'image' || (blob.mimeType || '').startsWith('image/'))) addOutput(blob);
   }
   const warning = blocked.length ? `Civitai 有图片未放行：${[...new Set(blocked)].join('；')}。插件不会自动换币、补扣或重新生成；请在平台核对原任务。` : '';
   const status = value.status === 'succeeded' ? (outputs.length ? 'completed' : 'failed') : ['failed', 'expired', 'canceled'].includes(value.status) ? 'failed' : 'processing';
-  return { id: value.id, status, outputs: [...new Set(outputs)], warning,
+  const failure = value.status === 'expired' ? 'Civitai 原任务已超时，未取得可下载的图片；请核对模型可用性和平台队列。' : `Civitai 工作流状态：${value.status}`;
+  return { id: value.id, status, outputs, outputKeys, warning,
     cost: value.cost, transactions: value.transactions,
-    error: typeof value.error === 'string' ? value.error : warning || (value.status === 'succeeded' ? 'Civitai 已结束，但没有可下载的图片；请核对原任务，插件不会自动重提或补扣。' : `Civitai 工作流状态：${value.status}`) };
+    error: typeof value.error === 'string' ? value.error : (value.status === 'expired' ? failure : warning || (value.status === 'succeeded' ? 'Civitai 已结束，但没有可下载的图片；请核对原任务，插件不会自动重提或补扣。' : failure)) };
 }
 
 export const withCivitai = Base => class CivitaiService extends Base {
@@ -86,7 +100,42 @@ export const withCivitai = Base => class CivitaiService extends Base {
   }
 
   predictionDetails(result) {
-    return { warning: result.warning, ...(result.cost ? { buzzCost: result.cost } : {}), ...(result.transactions ? { buzzTransactions: result.transactions } : {}) };
+    return { warning: result.warning, outputKeys: result.outputKeys, ...(result.cost ? { buzzCost: result.cost } : {}), ...(result.transactions ? { buzzTransactions: result.transactions } : {}) };
+  }
+
+  async refreshDownloadOutputs(job, config) {
+    const result = await this.refreshPrediction(job, config);
+    if (result.status === 'failed') {
+      Object.assign(job, this.predictionDetails(result));
+      job.status = 'failed'; job.error = safeError(new Error(result.error), config);
+      return;
+    }
+    if (result.status !== 'completed') throw new AppError('Civitai 原任务尚未返回可下载的图片，请稍后查询。');
+    const oldKeys = job.outputKeys || (job.outputs || []).map(url => outputKey(url));
+    const saved = new Map();
+    for (let i = 0; i < (job.images || []).length; i++) {
+      if (!job.images[i]) continue;
+      const key = oldKeys[i];
+      if (!key || oldKeys.filter(value => value === key).length !== 1 || result.outputKeys.filter(value => value === key).length !== 1) {
+        throw new AppError('Civitai 原任务的图片列表已变化，已保留本地缓存；请到平台核对原任务。');
+      }
+      saved.set(key, job.images[i]);
+    }
+    // Re-query only the existing workflow. Never re-submit a paid generation or
+    // attach the API key to a returned CDN URL. Match partial saves by blob ID.
+    if (saved.size) {
+      const fresh = new Map(result.outputKeys.map((key, index) => [key, result.outputs[index]]));
+      if (new Set(oldKeys).size !== oldKeys.length || fresh.size !== result.outputKeys.length || oldKeys.some(key => !fresh.has(key))) {
+        throw new AppError('Civitai 原任务的图片列表已变化，已保留本地缓存；请到平台核对原任务。');
+      }
+      // Keep the original slot numbers: download filenames use these indices.
+      // Reordering them could overwrite an image already saved in another slot.
+      result.outputKeys = [...oldKeys, ...result.outputKeys.filter(key => !oldKeys.includes(key))];
+      result.outputs = result.outputKeys.map(key => fresh.get(key));
+    }
+    job.outputs = result.outputs;
+    job.images = result.outputKeys.map(key => saved.get(key) || '');
+    Object.assign(job, this.predictionDetails(result));
   }
 
   async submitPrediction(job, config) {

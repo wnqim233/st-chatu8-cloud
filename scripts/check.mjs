@@ -19,9 +19,17 @@ const modules = JSON.parse(await fs.readFile('docs/reused-modules-sha256.json', 
 const backports = JSON.parse(await fs.readFile('docs/backported-modules-sha256.json', 'utf8'));
 const cloudUI = JSON.parse(await fs.readFile('docs/cloud-ui-modules-sha256.json', 'utf8'));
 const replyFixes = JSON.parse(await fs.readFile('docs/image-reply-modules-sha256.json', 'utf8'));
+const promptMenu = JSON.parse(await fs.readFile('docs/prompt-menu-modules-sha256.json', 'utf8'));
+const llmCompat = JSON.parse(await fs.readFile('docs/llm-compat-modules-sha256.json', 'utf8'));
 const baseModules = { ...modules, ...Object.fromEntries(Object.entries(backports.modules).map(([name, audit]) => [name, audit.sha256])) };
 const cloud13Modules = { ...baseModules, ...Object.fromEntries(Object.entries(cloudUI.modules).map(([name, audit]) => [name, audit.sha256])) };
-const expectedModules = { ...cloud13Modules, ...Object.fromEntries(Object.entries(replyFixes.modules).map(([name, audit]) => [name, audit.sha256])) };
+const cloud14Modules = { ...cloud13Modules, ...Object.fromEntries(Object.entries(replyFixes.modules).map(([name, audit]) => [name, audit.sha256])) };
+const cloud16Modules = { ...cloud14Modules, ...Object.fromEntries(Object.entries(promptMenu.modules).map(([name, audit]) => [name, audit.sha256])) };
+const expectedModules = { ...cloud16Modules, ...Object.fromEntries(Object.entries(llmCompat.modules).map(([name, audit]) => [name, audit.sha256])) };
+for (const [file, hash] of Object.entries(llmCompat.preservedFiles)) {
+  const actual = createHash('sha256').update(await fs.readFile(file)).digest('hex');
+  if (actual !== hash) throw new Error(`Preserved cloud.16 file changed: ${file}`);
+}
 for (const [name, expectedHash] of Object.entries(expectedModules)) {
   const marker = `// ${name}\n`;
   const start = main.lastIndexOf(marker);
@@ -36,9 +44,11 @@ for (const [name, expectedHash] of Object.entries(expectedModules)) {
   if (modules[name] && backports.modules[name] && backports.modules[name].beforeSha256 !== modules[name]) throw new Error(`Backport baseline mismatch: ${name}`);
   if (baseModules[name] && cloudUI.modules[name] && cloudUI.modules[name].beforeSha256 !== baseModules[name]) throw new Error(`Cloud UI baseline mismatch: ${name}`);
   if (cloud13Modules[name] && replyFixes.modules[name] && replyFixes.modules[name].beforeSha256 !== cloud13Modules[name]) throw new Error(`Image reply baseline mismatch: ${name}`);
+  if (cloud14Modules[name] && promptMenu.modules[name] && promptMenu.modules[name].beforeSha256 !== cloud14Modules[name]) throw new Error(`Prompt menu baseline mismatch: ${name}`);
+  if (cloud16Modules[name] && llmCompat.modules[name] && llmCompat.modules[name].beforeSha256 !== cloud16Modules[name]) throw new Error(`LLM compatibility baseline mismatch: ${name}`);
 }
 for (const hook of ['getWaveSpeedAdapter().mount();', 'getWaveSpeedAdapter().updateMode();', '"wavespeed": { widthKey:', 'var tabIds = ["wavespeed",']) if (!main.includes(hook)) throw new Error(`Missing hook: ${hook}`);
 const html = await fs.readFile('html/settings/wavespeed.html', 'utf8');
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]);
 if (new Set(ids).size !== ids.length) throw new Error('Duplicate WaveSpeed UI IDs');
-console.log(`PASS: ${js.length} JS syntax checks; ${Object.keys(upstream.files).length - changed.length} upstream files byte-identical; exactly ${changed.length} declared upstream files modified; ${Object.keys(modules).filter(name => name !== 'utils/chatDataUtils.js' && !backports.modules[name]).length} reused modules byte-identical; ${Object.keys(backports.modules).length} documented backport fingerprints; ${Object.keys(cloudUI.modules).length} cloud UI fingerprints; ${Object.keys(replyFixes.modules).length} image reply fingerprints; chatDataUtils storage-key normalization; hooks and HTML IDs checked.`);
+console.log(`PASS: ${js.length} JS syntax checks; ${Object.keys(upstream.files).length - changed.length} upstream files byte-identical; exactly ${changed.length} declared upstream files modified; ${Object.keys(modules).filter(name => name !== 'utils/chatDataUtils.js' && !backports.modules[name] && !cloudUI.modules[name] && !replyFixes.modules[name] && !promptMenu.modules[name] && !llmCompat.modules[name]).length} reused modules byte-identical; ${Object.keys(backports.modules).length} documented backport fingerprints; ${Object.keys(cloudUI.modules).length} cloud UI fingerprints; ${Object.keys(replyFixes.modules).length} image reply fingerprints; ${Object.keys(promptMenu.modules).length} prompt menu fingerprint; ${Object.keys(llmCompat.modules).length} LLM compatibility fingerprints; ${Object.keys(llmCompat.preservedFiles).length} Civitai/prompt-menu files preserved; chatDataUtils storage-key normalization; hooks and HTML IDs checked.`);

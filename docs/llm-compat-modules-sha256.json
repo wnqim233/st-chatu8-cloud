@@ -1,0 +1,90 @@
+{
+  "version": "3.1.0-cloud.17",
+  "baseVersion": "3.1.0-cloud.16",
+  "upstreamVersion": "3.1.7",
+  "upstreamCommit": "6e159481b15a975ba4ab2ba43d449d659eca6cd5",
+  "modules": {
+    "utils/promptProcessor.js": {
+      "beforeSha256": "487153cc64c04808caab7531cab804f13fc0b21490adffb2a0a23b1825e3ed29",
+      "sha256": "310aa2c4ab9550c6bb573504c2c7de159a41c454f36f5457efa197afe3372a45",
+      "purpose": "Backport upstream 3.1.7 Kunlun preset, tool output, variables and reasoning compatibility; preserve legacy requests. Use live chat variables in tool descriptions and preserve multimodal guide boundaries. Strip multiline author comments before variable side effects."
+    },
+    "utils/settings/toolCallService.js": {
+      "beforeSha256": "fa93fb4a166ddc7f247ace085f8c68bae213e1a62bc7da71354994755d25801a",
+      "sha256": "4342dc4e14cd707ee30452994f482952f2ada212def6d9270c1b0db8ded0bab1",
+      "purpose": "Backport upstream 3.1.7 Kunlun preset, tool output, variables and reasoning compatibility; preserve legacy requests."
+    },
+    "utils/settings/toolCallDecoder.js": {
+      "beforeSha256": "cfc5f6b956b86129bb412c2952adf65ce8b2975cb1ce9c46341a9f0e5cb9437c",
+      "sha256": "afa6c5ccb16aca9fcaea4c98fe48adfc6da96558797a883685ac333c3de446a5",
+      "purpose": "Backport upstream 3.1.7 Kunlun preset, tool output, variables and reasoning compatibility; preserve legacy requests. Keep argument decoders separate per tool call and isolate provider reasoning."
+    },
+    "utils/aiThinkingParser.js": {
+      "beforeSha256": "1f0fb4de59879f493339423edfac8d2d4e781b24f7e24e197c7cc3a4fa25b819",
+      "sha256": "322433d968b83ce4698873e8c1d574f3cdd4718a842c844ca20e428cc773ae32",
+      "purpose": "Backport upstream 3.1.7 Kunlun preset, tool output, variables and reasoning compatibility; preserve legacy requests. Preserve unlabelled/XML/JSON response fences."
+    },
+    "utils/settings/linuxTerminalImageData.js": {
+      "beforeSha256": null,
+      "sha256": "cd8c6d3168179bac902b05adb7377bab883b27ea84ee98b8aa7c0cb20ad3f619",
+      "purpose": "Static terminal image dependency from the pinned upstream release."
+    },
+    "utils/settings/llmService.js": {
+      "beforeSha256": "a642780a273c4a20c2d24d9d5302472117d253cf6b6f565dd9e812e9b544b401",
+      "sha256": "d53f61b5b78e46e3bd7fa859d0d3f5e1eedc5b2f522d60d227da42fb68cbd7e8",
+      "purpose": "Backport context comment stripping, variable resolution and message normalization while retaining the current transport and independent event namespace. Wrap provider reasoning, support renamed-tool stream fallback and reconstruct final output from complete arguments."
+    },
+    "utils/imagePromptGen.js": {
+      "beforeSha256": "2b7321ec32da630870053259e4c747e1ab1d1dcfe2ef653a3aad2d9742f75148",
+      "sha256": "9ffca0053967496964c80710999e46632c8ea23d884f05b6fd7558cac3ec6ef6",
+      "purpose": "Resolve character/outfit variables after assembling the final messages."
+    },
+    "utils/outfitImagePromptGen.js": {
+      "beforeSha256": "b1cadd934cbc16f3b04e99af252cc8150ec4b44e962ed1b1319b0b0dad597909",
+      "sha256": "c5c23c0bca8bffa5219d97244f64d3cebd0ffe35ffd36512cb81e4574ba02103",
+      "purpose": "Resolve character/outfit variables after assembling the final messages."
+    },
+    "utils/outfitPromptModify.js": {
+      "beforeSha256": "358837cf020be376cf30fd525fdd5a96ceded5fc88328147835597181f417b7b",
+      "sha256": "a8bd2264036d6d0c6b66a9d611d16a50ebc3c821cec74b21531ca75919e802de",
+      "purpose": "Resolve character/outfit variables after assembling the final messages."
+    },
+    "utils/aiSettingsBridge.js": {
+      "beforeSha256": "d59014ecf03a98c894bb22ffec4ac09fd16f4f90bd34333a1296bca1288f254a",
+      "sha256": "fd113e8a9780910e7869d2307e474a52e9dcbac578f26a55b9b04ba8db9bb028",
+      "purpose": "Recognize new reasoning and terminal wrappers before assistant actions. Preserve unlabelled/XML/JSON response fences."
+    },
+    "utils/assistant/assistantTTS.js": {
+      "beforeSha256": "cba65f58cbc76c0d206471cae25ba7c53af2f038e97593bf18ac6861e9b8abaf",
+      "sha256": "3419e28508c4a291c57c44fc1758b6a64796f6da9104a3cc9fa09af48642a410",
+      "purpose": "Keep reasoning/terminal traces out of spoken assistant text."
+    },
+    "utils/imageInserter.js": {
+      "beforeSha256": "459dc2bf3a1992403e08ca4ce80c19016a8dbb91c0758ec3b9f2bc0a57748a22",
+      "sha256": "dc73ceb9e25fdb6742b10d63099acf299402e505d668ee4655b01c854b3954f9",
+      "purpose": "Extend reasoning filtering while preserving cloud.14 mixed reply parsing, footer placement and drafts."
+    },
+    "utils/utils.js": {
+      "beforeSha256": "3840e32a4d6e8222f0cc6f5264c0b56f47c8d388be22309f75e6f7aa2f39ea29",
+      "sha256": "59f0463f6d5c4714e30cd62db9a54fa0908739e34644c02694b272692cb8f850",
+      "purpose": "Recognize expanded reasoning wrappers without removing the existing regex and character replacement support."
+    },
+    "utils/settings/stream_generate.js": {
+      "beforeSha256": "e8d2d0d3382af356a70c083c57735deb56f36ab1d148776e3d83aaacc5e4d71f",
+      "sha256": "250f443743c126e49f3003d1c77c42e02b529668c346de37c4e231c30d65a608",
+      "purpose": "Filter new reasoning, partial tag chunks and terminal examples before streaming image dispatch; keep cloud queue and stop handling."
+    }
+  },
+  "preservedFiles": {
+    "wavespeed/adapter.js": "3385bf4168fab9ee7d19dfbfcfdb1baa1089bc6a8544a91863e7630dce6eb947",
+    "wavespeed/prompt-menu.js": "2441f84d9b54dc5a65874a7411045a8bc86eed8ab468175158811a6a4fda862b",
+    "wavespeed/browser.js": "2add8e516c869604f0b1eba89b8d99a7635b38f66e35571919271b35ccf20e98",
+    "wavespeed/client.js": "a2b1cd4c3b0b7fffa092c1f67241a69445d1a9ed9854358a53b6e92e51deea0f",
+    "wavespeed/settings.js": "6f732008409e970fc64962941db9e09b5cebad1870064c0447eadc68c87c2db3",
+    "shared/jobs.js": "d84b6f340185ea9bfda60e5d0960a0e5c9974d8697e7a7a8f417b942b8c6e53b",
+    "shared/civitai.js": "c9e87637cf9ed0612c2fef39b7bcf06018f5b77e780521c06b18f59d0b3b04d6",
+    "shared/http.js": "4891fa4663ad6dc2ff3c455b6ce90733195762341cb27181dc28552cb135f721",
+    "shared/config.js": "67dbf8e7b1ea0d80e51dcf631b0ebefb0d4405be1828f0a1a3ad4c6a0764b139",
+    "shared/queue.js": "5e438bf367852d70f5ca456183fa8914bd1fd42911b463ef9c8d9184b548ccbe"
+  }
+}

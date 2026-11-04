@@ -18,7 +18,7 @@ const config = { ...DEFAULT_CONFIG, wavespeedKey: 'test-secret-not-real' };
 const input = (id = 'request-000000000001') => ({ id, prompt: 'A character in the rain', cacheTag: '原消息图片标签', change: '修改后的提示词', source: { chatId: 'chat-A', messageId: 'message-A', swipeId: 0, hash: 'hash-A' } });
 async function store(t) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'chatu8-wave-test-'));
-  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  t.after(() => fs.rm(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }));
   return new UserStore({ root: dir, userImages: path.join(dir, 'user/images') });
 }
 

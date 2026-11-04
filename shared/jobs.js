@@ -20,7 +20,7 @@ export function validateSource(source) {
 }
 
 export function publicJob(job) {
-  const { outputs, ...rest } = job;
+  const { outputs, outputKeys, ...rest } = job;
   return rest;
 }
 
@@ -181,7 +181,9 @@ export class WaveSpeedService {
       if (this.now() < job.nextPollAt) return job;
       job.nextPollAt = this.now() + 3000;
       try {
-        if (job.status !== 'download_failed') {
+        if (job.status === 'download_failed') {
+          await this.refreshDownloadOutputs(job, config);
+        } else {
           const result = await this.refreshPrediction(job, config);
           Object.assign(job, this.predictionDetails(result));
           if (FAILURE.has(result.status)) {
@@ -217,5 +219,6 @@ export class WaveSpeedService {
   }
 
   async prepareDownloads() {}
+  async refreshDownloadOutputs() {}
   async download(raw, stem) { return this.store.download(raw, stem, this.fetcher); }
 }

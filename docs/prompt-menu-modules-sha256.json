@@ -1,0 +1,11 @@
+{
+  "version": "3.1.0-cloud.16",
+  "baseVersion": "3.1.0-cloud.15",
+  "modules": {
+    "utils/iframe/placeholder.js": {
+      "beforeSha256": "0d9f1c981623bc98e6f0dada56cb0e99c8c4bff5535b38e6b69b7a4c0b16a4ab",
+      "sha256": "f167f3fc1cc1678cd2ce8373ca4a42673d2b957a1f1d1e99e010393e247aedfa",
+      "purpose": "Bind both generated-image placeholder button paths to the single-action prompt-copy menu; preserve regular generation clicks."
+    }
+  }
+}

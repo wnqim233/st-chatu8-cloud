@@ -1,0 +1,64 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>昆仑输出与提示词复制回归</title>
+<style>body{max-width:720px;margin:24px auto;padding:0 18px;background:#19212b;color:#f2f4f8;font:16px/1.6 system-ui}section{padding:18px;border:1px solid #65758b;border-radius:12px;margin:16px 0}button{padding:12px 20px;background:#5669ad;color:white;border:0;border-radius:8px;font:inherit}textarea{box-sizing:border-box;width:100%;min-height:95px;font:16px system-ui}label{display:block;margin:14px 0}#status{color:#afdcbc}</style>
+<h1>昆仑输出 → 生成按钮 → 复制</h1><p>本地回归页，使用模拟任务，不连接生图平台。</p>
+<p id="result">正在准备…</p><p id="count">生成提交次数：0</p><p id="status" role="status"></p>
+<section id="story">旅人站在雨中的窗边。</section>
+<label><input type="checkbox" id="restricted">模拟浏览器限制自动复制</label>
+<label>最近传给复制函数的文本<textarea id="copied" aria-label="最近复制的提示词" readonly></textarea></label>
+<script type="module">
+import {parseImageReply} from '../shared/image-reply.js';
+import {bindPromptCopyMenu} from '../wavespeed/prompt-menu.js';
+import {createWaveSpeedAdapter} from '../wavespeed/adapter.js';
+import {DEFAULT_CONFIG} from '../shared/config.js';
+import {workflowBody} from '../shared/civitai.js';
+const el=id=>document.getElementById(id), check=(ok,message)=>{if(!ok)throw Error(message)}, noop=()=>{};
+try {
+  const source=await(await fetch('/index.js')).text();
+  const fn=name=>{const match=new RegExp('(?:async )?function '+name+'\\(').exec(source);return source.slice(match.index,source.indexOf('\n}',match.index)+2)};
+  const mod=name=>{const marker='// '+name+'\n',start=source.lastIndexOf(marker);const next=/^\/\/ [a-zA-Z][^\n]*\.(?:js|ts)\s*$/m.exec(source.slice(start+marker.length));return source.slice(start,next?start+marker.length+next.index:source.length)};
+  const lazy=def=>{let done=false;return()=>{if(!done){done=true;Object.values(def)[0]()}}};
+  const Parser=Function('__esm',mod('utils/settings/toolCallDecoder.js')+'\ninit_toolCallDecoder();return StreamToolCallParser;')(lazy);
+  const parser=new Parser('agw_emit_fixture',[{name:'display_stream',wrapTag:''}]);
+  const payload=JSON.stringify({thought:'<image><prompts>reasoning example</prompts></image>',display_stream:'<image><regex>窗边。</regex><prompts>白发 traveler in the rain</prompts></image>'});
+  let decoded=parser.processDeltaToolCalls([{index:0,function:{name:'agw_emit_fixture',arguments:''}}]).deltaContent;
+  for(const char of payload)decoded+=parser.processDeltaToolCalls([{index:0,function:{arguments:char}}]).deltaContent;
+  const report=parseImageReply(decoded);
+  check(report.images.length===1&&!report.images[0].tag.includes('reasoning example'),'思考示例不应成为图片');
+  const history=[],settings={mode:'civitai'};
+  const config={...DEFAULT_CONFIG,civitaiModel:'urn:air:krea2:diffusionmodel:civitai:100@200+300',fixedPrompt:'illustration',fixedPromptEnd:'soft light'};
+  const expected='illustration, silver hair traveler in the rain, soft light';
+  const adapter=createWaveSpeedAdapter({
+    settings:()=>settings,context:()=>({chatId:'kunlun-browser-fixture'}),
+    api:async(route,body)=>{
+      if(route==='/config'&&body===undefined)return config;
+      if(route==='/jobs'&&body===undefined)return history;
+      if(route==='/jobs'&&body){
+        check(body.provider==='civitai'&&body.prompt===expected,'Civitai 提示词或平台不正确');
+        const request=workflowBody({prompt:body.prompt,params:body.params,model:body.model,civitaiCurrency:'yellow'});
+        check(request.steps[0].input.diffusionModel===config.civitaiModel,'模型文件编号丢失');
+        check(request.tips.creators===0&&request.tips.civitai===0,'小费设置改变');
+        const job={...body,status:'download_failed',createdAt:Date.now(),error:'HTTP 403：图片下载失败（模拟）'};
+        history.unshift(job);el('count').textContent='生成提交次数：'+history.length;return job;
+      }
+      throw Error('Unexpected route: '+route);
+    },
+    replacePrompt:async text=>({modifiedPrompt:text.replace('白发','silver hair'),insertions:{}}),
+    composePrompt:async(a,b,c)=>[a,b,c].filter(Boolean).join(', '),
+    wait:async(_api,job)=>{throw Error(job.error)},
+    taskQueue:{addTask:()=>1,updateStatus:noop,completeTask:noop},record:noop,log:noop,
+    eventTypes:{GENERATE_IMAGE_RESPONSE:'result'},events:{emit:(_name,result)=>{check(!result.success,'应模拟下载失败');el('status').textContent=result.error}},
+  });
+  const realCopy=Function(fn('copyText')+';return copyText')();
+  const copy=async(doc,text)=>{el('copied').value=text;check(text===expected,'复制文本不完整');return el('restricted').checked?false:realCopy(doc,text)};
+  const notice=text=>el('status').textContent=text;
+  const env={bindPromptCopyMenu,getWaveSpeedAdapter:()=>adapter,copyText:copy,toastr:{success:notice,warning:notice},
+    triggerGeneration:button=>adapter.generate({id:button.dataset.requestId,prompt:button.dataset.link,change:button.dataset.change||''}),
+    getImageTags4:()=>({startTag:'image###',endTag:'###'}),normalizePromptTag:text=>text.trim(),generateStableId:()=> 'kunlun-test-image',getItemImg:async()=>[null],isGenerating:()=>false};
+  const api=Function(...Object.keys(env),['bindGenerationPromptMenu','extractPureTag','findNodeAtPosition','createButtonAtPosition'].map(fn).join('\n')+'\nreturn {createButtonAtPosition};')(...Object.values(env));
+  const root=el('story'),node=root.firstChild,length=node.textContent.length;
+  await api.createButtonAtPosition(length,report.images[0].tag,[{node,start:0,end:length}],document,root,{},false);
+  check(root.querySelectorAll('button').length===1,'应只生成一个按钮');
+  el('result').textContent='解析通过：1 张图片，思考示例已过滤。先点生成模拟失败，再长按复制。';
+}catch(error){el('result').textContent='失败：'+error.stack;console.error(error)}
+</script></html>

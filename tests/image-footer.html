@@ -16,7 +16,7 @@ try {
   const env={chat, imageFooterOffset,orderImageInsertions,retainImageDrafts,promoteImageDraft,showImageDrafts, extensionName:'test', getContext:()=>({chat}),getContext14:()=>({chat}),
     console:{log:noop,group:noop,groupEnd:noop,warn:noop,error:console.error},debugTimer:()=>({end:noop}),debugBranch:noop,debugLog:noop,debugElement:noop,
     saveChatConditional:async()=>localStorage.setItem(storage,JSON.stringify(chat[0])),renderMessage:async()=>{},getcharData:async()=>({}),
-    normalizePromptTag:s=>s.trim(),generateStableId:s=>s.replaceAll(' ','-'),getItemImg:async()=>[null],isGenerating:()=>false};
+    normalizePromptTag:s=>s.trim(),generateStableId:s=>s.replaceAll(' ','-'),getItemImg:async()=>[null],isGenerating:()=>false,bindGenerationPromptMenu:noop};
   for(const key of new Set(code.match(/\bextension_settings\d*\b/g)||[]))env[key]={test:settings};
   const api=Function(...Object.keys(env),code+'\nreturn {insertImagesIntoElement,getSavedImageMatches,createButtonAtPosition,refreshImageDraftPanels};')(...Object.values(env));
   const story='\n她推开了窗。\n清晨的阳光落在水面上。岸边的小船还系在木桩上，船头随着水波轻轻起伏。远处有人推着自行车过桥，车铃响了一声。她靠在窗边等了一会儿，听见楼下的门打开，又听见几声脚步，慢慢朝湖边去了。\n';
