@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
+import { withAutoCharacterPrompt } from '../wavespeed/auto-characters.js';
 
 export const source = await fs.readFile(new URL('../index.js', import.meta.url), 'utf8');
 export function moduleSource(name) {
@@ -17,7 +18,7 @@ export function fixture(settings = {}) {
   const ctx = { chatMetadata: { variables: { appearance: 'silver hair', character: { eyes: 'blue eyes' }, nested: '{{getvar::appearance}}', zero: 0 } } };
   const globals = { lighting: 'soft light' }, world = { weather: 'rain', zero: 0 };
   const box = {
-    console: { log() {}, warn() {}, error() {} }, extensionName: 'st-chatu8-cloud',
+    console: { log() {}, warn() {}, error() {} }, extensionName: 'st-chatu8-cloud', withAutoCharacterPrompt,
     extension_settings15: { 'st-chatu8-cloud': settings }, extension_settings16: { 'st-chatu8-cloud': settings }, extension_settings17: { 'st-chatu8-cloud': settings },
     __esm(def) { let done = false; return () => { if (!done) { done = true; Object.values(def)[0](); } }; },
     getContext4: () => ctx, init_config() {}, init_chatDataUtils() {}, init_worldbookProcessor() {}, init_wordReplacementService() {}, init_videoAssetsService() {}, init_defaultToolCallConfig() {},

@@ -1,0 +1,48 @@
+{
+  "baseVersion": "3.1.0-cloud.19",
+  "version": "3.1.0-cloud.20",
+  "files": {
+    "index.js": {
+      "beforeSha256": "dbacf66784ca8d9c0cdb6fc3d7a102df6e261c58cc52e4f22171ea9421584b1f",
+      "sha256": "ee620c228b30b26cfd2cd51e76009acd5d3c7a6517a8a95e9033c27559a72921",
+      "purpose": "Inject conditional instructions into outgoing typed image-prompt requests; bind and refresh persistent cast controls."
+    },
+    "wavespeed/auto-characters.js": {
+      "beforeSha256": null,
+      "sha256": "24f3fa6261327de49c6d4042bebf2368613351357eb500e767e05abee27dc500",
+      "purpose": "Build instructions from the active cast and manage its saved opt-in control without rewriting history."
+    },
+    "html/settings/character.html": {
+      "beforeSha256": "9a1503804e27df9cb0b69b2f040a3205cf3cdc80c0dfa14d86badb8b5f133477",
+      "sha256": "71f55e84e6af19fa6fe585d0aa9cd72cf1a524ca09a966be04a4aa8850869490",
+      "purpose": "Add the persistent fixed-character activation button to the cast editor."
+    },
+    "html/settings/wavespeed.html": {
+      "beforeSha256": "fa8c71f33c2eb6b247616ca053c2fc4ec9ca47d1cb3f675b3b536ba37d281ae6",
+      "sha256": "47092344b3f901ca47b0449ed87e0706b62f5557912dd6974a575579ab9fd3c9",
+      "purpose": "Expose the same fixed-character state beside cloud generation settings."
+    },
+    "wavespeed/style.css": {
+      "beforeSha256": "98095ea80c808ca243ea856615b416c8f3b7d2e1b854a77642d1a3da0e99f0f8",
+      "sha256": "cda51f1d77ecb185f8470da21995fe59912ece6cd6f88ae10d88f6e4d1fee3eb",
+      "purpose": "Style shared fixed-character buttons for desktop and narrow screens."
+    }
+  },
+  "modules": {
+    "index.js": {
+      "beforeSha256": "88f46df0db1f0274f211962214d5e54e716ba9f06bbd1cb6704e3615c815ba08",
+      "sha256": "25c7753f348aa5b5db507a2816ade7d8a4e55e1f64968ba17d8bc0f065fafbe2",
+      "purpose": "Mount persistent character controls after the existing UI initialization."
+    },
+    "utils/settings/character/characterEnable.js": {
+      "beforeSha256": "2e7915cca26e39f31a4f6484b54bfed63058287ad04755ac61559c4d6d26e9f8",
+      "sha256": "27a39d677d0feb61fd68d1f8880f8088b7f99e979fb5c7128f86c33de9b111a6",
+      "purpose": "Refresh both controls when loading or saving the original cast editor."
+    },
+    "utils/settings/llmService.js": {
+      "beforeSha256": "d53f61b5b78e46e3bd7fa859d0d3f5e1eedc5b2f522d60d227da42fb68cbd7e8",
+      "sha256": "f17fa4f53279623684c6068fa890e7271beea345e09c2e3da4eaad0f8884edb5",
+      "purpose": "Append enabled character instructions once per outgoing image request, before existing tool transformations."
+    }
+  }
+}

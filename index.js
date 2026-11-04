@@ -1,4 +1,4 @@
-/* Modified by Codex for the workspace owner, 2026-09-19; selected 3.1.6 fixes backported 2026-10-16; image reply parsing fixed 2026-11-02; prompt-copy menu, selected 3.1.7 compatibility and cloud character preset integration added 2026-11-04.
+/* Modified by Codex for the workspace owner, 2026-09-19; selected 3.1.6 fixes backported 2026-10-16; image reply parsing fixed 2026-11-02; prompt-copy menu, selected 3.1.7 compatibility and cloud character preset integration added 2026-11-04; opt-in automatic character instructions added 2026-11-05.
  * Purpose: add WaveSpeed and Civitai backend hooks and settings; preserve upstream worldbook/LLM behavior.
  * Upstream: damoshen123/st-chatu8 @ 4e1e8f8a6cab1375d39eb806a292516dbb9c43be.
  * Licensed under the Aladdin Free Public License; see LICENSE and MODIFICATIONS.md.
@@ -6,9 +6,26 @@
 import { createWaveSpeedAdapter } from "./wavespeed/adapter.js";
 import { bindPromptCopyMenu } from "./wavespeed/prompt-menu.js";
 import { expandCloudCharacters } from "./wavespeed/characters.js";
+import { withAutoCharacterPrompt, createAutoCharacterControls } from "./wavespeed/auto-characters.js";
 import { parseImageReply, imageReplyFailureInfo } from "./shared/image-reply.js";
 import { imageFooterOffset, orderImageInsertions, retainImageDrafts, promoteImageDraft, showImageDrafts } from "./shared/image-footer.js";
 var waveSpeedAdapterInstance;
+var autoCharacterControlsInstance;
+function refreshAutoCharacterControls() {
+  autoCharacterControlsInstance ||= createAutoCharacterControls({
+    settings: () => extension_settings115[extensionName],
+    save: () => SillyTavern.getContext().saveSettingsDebounced(),
+    prepare: () => {
+      const currentId = extension_settings115[extensionName].characterEnablePresetId;
+      const select = document.getElementById("character_enable_preset_id");
+      if (currentId && select?.value === currentId && document.getElementById("character_enable_list")) {
+        saveCurrentCharacterEnableData(currentId);
+      }
+    },
+    notify: (message, warning) => warning ? toastr.warning(message) : toastr.success(message)
+  });
+  autoCharacterControlsInstance.refresh();
+}
 function bindGenerationPromptMenu(button) {
   bindPromptCopyMenu(button, {
     getPrompt: () => button.dataset.activeMode === "video"
@@ -20814,6 +20831,7 @@ async function executeTypedLLMRequest(data, requestType, responseEventName, upda
       const extraBody = parseCustomBody(config.custom_body_params);
       Object.assign(baseRequestBody, extraBody);
     }
+    baseRequestBody.messages = withAutoCharacterPrompt(baseRequestBody.messages, extension_settings17[extensionName], requestType);
     const { toolName: syntheticToolName, transformedBody, isToolCallEnabled, toolFields } = transformToolCallRequest(baseRequestBody, config);
     if (transformedBody && Array.isArray(transformedBody.messages)) {
       transformedBody.messages = mergeAdjacentMessages(dropKnownEmptyMessages(transformedBody.messages));
@@ -33717,6 +33735,7 @@ function loadCharacterEnablePreset() {
     bindChatInput.value = preset.bindChatId || "";
   }
   saveSettingsDebounced22();
+  refreshAutoCharacterControls();
 }
 function updateCharacterEnablePreset() {
   const settings3 = extension_settings30[extensionName];
@@ -33829,6 +33848,7 @@ function saveCurrentCharacterEnableData(presetId) {
     bindChatId
   });
   saveSettingsDebounced22();
+  refreshAutoCharacterControls();
 }
 function getCharacterEnableInputCharacters() {
   const textarea = document.getElementById("character_enable_list");
@@ -111168,6 +111188,7 @@ async function main() {
   initImageGenStatsListener();
   await initUI({ check_update });
   getWaveSpeedAdapter().mount();
+  refreshAutoCharacterControls();
   initImageDraftPanels();
   getWaveSpeedAdapter().updateMode();
   initializeNewlineFixer();

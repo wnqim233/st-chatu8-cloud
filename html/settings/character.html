@@ -396,8 +396,13 @@
         </div>
     </div>
 
-    <!-- 角色启用管理子页面 -->
+    <!-- 角色启用管理子页面；Codex added persistent fixed-character control, 2026-11-05. AFPL; see LICENSE. -->
     <div id="ch-sub-tab-character-enable" class="st-chatu8-sub-tab-content" style="display: none;">
+        <div class="ws-auto-characters" data-auto-characters>
+            <button type="button" class="st-chatu8-btn" aria-pressed="false">启动固定角色</button>
+            <p role="status" aria-live="polite">读取当前角色列表…</p>
+            <small>启动时自动保存下方角色列表。之后照常生成提示词；只引用画面中出场的角色。开关随当前角色列表保存。</small>
+        </div>
         <!-- 预设管理 -->
         <div class="st-chatu8-settings-section">
             <h3>角色启动预设</h3>

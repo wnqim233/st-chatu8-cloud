@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
 const upstream = JSON.parse(await fs.readFile('docs/upstream-sha256.json', 'utf8'));
-const expected = new Set(['index.js', 'manifest.json', 'settings.html', 'style.css', 'html/settings/main.html', 'README.md']);
+const expected = new Set(['index.js', 'manifest.json', 'settings.html', 'style.css', 'html/settings/main.html', 'html/settings/character.html', 'README.md']);
 const changed = [];
 for (const [file, hash] of Object.entries(upstream.files)) {
   const content = await fs.readFile(file);
@@ -23,12 +23,14 @@ const promptMenu = JSON.parse(await fs.readFile('docs/prompt-menu-modules-sha256
 const llmCompat = JSON.parse(await fs.readFile('docs/llm-compat-modules-sha256.json', 'utf8'));
 const kreaFix = JSON.parse(await fs.readFile('docs/krea2-fix-sha256.json', 'utf8'));
 const characterFix = JSON.parse(await fs.readFile('docs/character-presets-sha256.json', 'utf8'));
+const autoCharacters = JSON.parse(await fs.readFile('docs/auto-character-sha256.json', 'utf8'));
 const baseModules = { ...modules, ...Object.fromEntries(Object.entries(backports.modules).map(([name, audit]) => [name, audit.sha256])) };
 const cloud13Modules = { ...baseModules, ...Object.fromEntries(Object.entries(cloudUI.modules).map(([name, audit]) => [name, audit.sha256])) };
 const cloud14Modules = { ...cloud13Modules, ...Object.fromEntries(Object.entries(replyFixes.modules).map(([name, audit]) => [name, audit.sha256])) };
 const cloud16Modules = { ...cloud14Modules, ...Object.fromEntries(Object.entries(promptMenu.modules).map(([name, audit]) => [name, audit.sha256])) };
 const cloud18Modules = { ...cloud16Modules, ...Object.fromEntries(Object.entries(llmCompat.modules).map(([name, audit]) => [name, audit.sha256])) };
-const expectedModules = { ...cloud18Modules, ...Object.fromEntries(Object.entries(characterFix.modules).map(([name, audit]) => [name, audit.sha256])) };
+const cloud19Modules = { ...cloud18Modules, ...Object.fromEntries(Object.entries(characterFix.modules).map(([name, audit]) => [name, audit.sha256])) };
+const expectedModules = { ...cloud19Modules, ...Object.fromEntries(Object.entries(autoCharacters.modules).map(([name, audit]) => [name, audit.sha256])) };
 for (const [file, hash] of Object.entries(llmCompat.preservedFiles)) {
   const actual = createHash('sha256').update(await fs.readFile(file)).digest('hex');
   const update = kreaFix.files[file];
@@ -45,7 +47,14 @@ for (const [file, audit] of Object.entries(kreaFix.files)) {
 }
 for (const [file, audit] of Object.entries(characterFix.files)) {
   const actual = createHash('sha256').update(await fs.readFile(file)).digest('hex');
-  if (actual !== audit.sha256) throw new Error(`Character fix fingerprint mismatch: ${file}`);
+  const update = autoCharacters.files[file];
+  if (update && update.beforeSha256 !== audit.sha256) throw new Error(`Automatic character baseline mismatch: ${file}`);
+  if (actual !== (update?.sha256 ?? audit.sha256)) throw new Error(`Character fix fingerprint mismatch: ${file}`);
+}
+for (const [file, audit] of Object.entries(autoCharacters.files)) {
+  const actual = createHash('sha256').update(await fs.readFile(file)).digest('hex');
+  if (actual !== audit.sha256) throw new Error(`Automatic character fingerprint mismatch: ${file}`);
+  if (upstream.files[file] && file !== 'index.js' && audit.beforeSha256 !== upstream.files[file]) throw new Error(`Automatic character upstream baseline mismatch: ${file}`);
 }
 for (const [name, expectedHash] of Object.entries(expectedModules)) {
   const marker = `// ${name}\n`;
@@ -64,11 +73,14 @@ for (const [name, expectedHash] of Object.entries(expectedModules)) {
   if (cloud14Modules[name] && promptMenu.modules[name] && promptMenu.modules[name].beforeSha256 !== cloud14Modules[name]) throw new Error(`Prompt menu baseline mismatch: ${name}`);
   if (cloud16Modules[name] && llmCompat.modules[name] && llmCompat.modules[name].beforeSha256 !== cloud16Modules[name]) throw new Error(`LLM compatibility baseline mismatch: ${name}`);
   if (cloud18Modules[name] && characterFix.modules[name] && characterFix.modules[name].beforeSha256 !== cloud18Modules[name]) throw new Error(`Character module baseline mismatch: ${name}`);
+  if (cloud19Modules[name] && autoCharacters.modules[name] && autoCharacters.modules[name].beforeSha256 !== cloud19Modules[name]) throw new Error(`Automatic character module baseline mismatch: ${name}`);
 }
 for (const hook of ['getWaveSpeedAdapter().mount();', 'getWaveSpeedAdapter().updateMode();', '"wavespeed": { widthKey:', 'var tabIds = ["wavespeed",']) if (!main.includes(hook)) throw new Error(`Missing hook: ${hook}`);
 const html = await fs.readFile('html/settings/wavespeed.html', 'utf8');
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]);
 if (new Set(ids).size !== ids.length) throw new Error('Duplicate WaveSpeed UI IDs');
 if (!main.includes('expandCharacters: prompt => expandCloudCharacters(prompt, processCharacterPrompt, window)')) throw new Error('Missing character preset integration hook');
+if (!main.includes('baseRequestBody.messages = withAutoCharacterPrompt(baseRequestBody.messages, extension_settings17[extensionName], requestType);')) throw new Error('Missing automatic character request hook');
+console.log(`PASS: ${Object.keys(autoCharacters.files).length} automatic character file fingerprints; ${Object.keys(autoCharacters.modules).length} module fingerprints; outgoing request hook checked.`);
 console.log(`PASS: ${Object.keys(characterFix.files).length} character integration file fingerprints; ${Object.keys(characterFix.modules).length} character module fingerprint; production preset hook checked.`);
 console.log(`PASS: ${js.length} JS syntax checks; ${Object.keys(upstream.files).length - changed.length} upstream files byte-identical; exactly ${changed.length} declared upstream files modified; ${Object.keys(modules).filter(name => name !== 'utils/chatDataUtils.js' && !backports.modules[name] && !cloudUI.modules[name] && !replyFixes.modules[name] && !promptMenu.modules[name] && !llmCompat.modules[name]).length} reused modules byte-identical; ${Object.keys(backports.modules).length} documented backport fingerprints; ${Object.keys(cloudUI.modules).length} cloud UI fingerprints; ${Object.keys(replyFixes.modules).length} image reply fingerprints; ${Object.keys(promptMenu.modules).length} prompt menu fingerprint; ${Object.keys(llmCompat.modules).length} LLM compatibility fingerprints; ${Object.keys(llmCompat.preservedFiles).filter(file => !kreaFix.files[file]).length} Civitai/prompt-menu files preserved; ${Object.keys(kreaFix.files).length} Krea fix fingerprints; chatDataUtils storage-key normalization; hooks and HTML IDs checked.`);

@@ -1,0 +1,55 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>固定角色自动要求验证</title><link rel="stylesheet" href="/wavespeed/style.css">
+<style>body{max-width:760px;margin:20px auto;padding:0 16px;background:#17212c;color:#eef0f7;font:16px/1.6 system-ui}h1{font-size:24px}button,select,textarea{font:inherit}button{padding:10px 14px;border:1px solid #7088aa;border-radius:8px;background:#364f72;color:#fff;cursor:pointer}textarea{width:100%;box-sizing:border-box;min-height:80px}label{display:block;margin:12px 0}section{margin:16px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere}#notice{color:#b8e9cb}</style>
+<h1>固定角色 · 一次启动</h1><p>独立本地验证：实际按钮、角色保存、提示词展开与复制；模型响应和生图任务模拟，不扣费。</p>
+<p id="notice" role="status">正在加载…</p>
+<section id="cloud"><h2>云端生图</h2></section>
+<details><summary>角色启用管理</summary><section id="editor"></section>
+<label>当前角色列表<select id="character_enable_preset_id"><option value="当前故事">当前故事</option><option value="另一故事">另一故事</option></select></label>
+<label>启用角色<textarea id="character_enable_list"></textarea></label>
+<input id="character_enable_bind_card" type="hidden"><input id="character_enable_bind_chat" type="hidden">
+</details>
+<label>测试画面<select id="scene"><option value="hero">示例男主坐在车里</option><option value="empty">无人风景</option></select></label>
+<button id="prompt">按正常流程生成提示词（模拟）</button>
+<p id="request-status"></p>
+<label>得到的绘图提示词<textarea id="result" readonly></textarea></label>
+<button id="generate">生成图片（模拟）</button><p id="count">生图提交次数：0</p>
+<label>长按复制的实际提示词<textarea id="copied" readonly></textarea></label>
+<details><summary>实际自动附加的要求</summary><pre id="instruction"></pre></details>
+<script type="module">
+import { withAutoCharacterPrompt, autoCharacterState, createAutoCharacterControls } from '../wavespeed/auto-characters.js';
+import { createWaveSpeedAdapter } from '../wavespeed/adapter.js';
+import { expandCloudCharacters } from '../wavespeed/characters.js';
+import { bindPromptCopyMenu } from '../wavespeed/prompt-menu.js';
+const el=id=>document.getElementById(id), noop=()=>{}, notice=text=>el('notice').textContent=text;
+const key='cloud20-auto-character-fixture';
+const settings=JSON.parse(sessionStorage.getItem(key)||'null')||{mode:'civitai',characterPresets:{'示例男主预设':{nameCN:'示例男主',nameEN:'Example Hero',characterTraits:'an adult man, lean athletic build',facialFeatures:'refined face, short black hair',upperBodySFW:'slim shoulders'},'示例女主预设':{nameCN:'示例女主',characterTraits:'an adult woman',facialFeatures:'gold rimmed glasses'}},outfitPresets:{},characterEnablePresetId:'当前故事',characterEnablePresets:{'当前故事':{characters:['示例男主预设']},'另一故事':{characters:['示例女主预设']}}};
+const source=await(await fetch('/index.js')).text(),fn=name=>{const m=new RegExp('(?:async )?function '+name+'\\(').exec(source);return source.slice(m.index,source.indexOf('\n}',m.index)+2)};
+for(const [id,path]of [['cloud','/html/settings/wavespeed.html'],['editor','/html/settings/character.html']]){
+ const html=await(await fetch(path)).text(), parsed=new DOMParser().parseFromString(html,'text/html');
+ el(id).append(parsed.querySelector('[data-auto-characters]'));
+}
+const save=()=>sessionStorage.setItem(key,JSON.stringify(settings));
+const scope={createAutoCharacterControls,CHARACTER_CONFIG_SCHEMA_VERSION:2,extensionName:'st-chatu8-cloud',extension_settings115:{'st-chatu8-cloud':settings},extension_settings30:{'st-chatu8-cloud':settings},extension_settings29:{'st-chatu8-cloud':settings},saveSettingsDebounced22:save,SillyTavern:{getContext:()=>({saveSettingsDebounced:save})},toastr:{success:notice,warning:notice}};
+const names=['normalizeMediaEntry','normalizeCharacterPreset','normalizeCharacterEnableEntry','normalizeCharacterEnablePreset','saveCurrentCharacterEnableData','loadCharacterEnablePreset','refreshAutoCharacterControls','normalizeName','calculateMatchScore','collectCharacterCandidates','collectOutfitCandidates','findBestCharacterMatch','findBestOutfitMatch','processCharacterPrompt','collectNegativeToGlobal'];
+const runtime=Function(...Object.keys(scope),'var autoCharacterControlsInstance;\n'+names.map(fn).join('\n')+'\nreturn {loadCharacterEnablePreset,refreshAutoCharacterControls,processCharacterPrompt};')(...Object.values(scope));
+el('character_enable_preset_id').value=settings.characterEnablePresetId;
+el('character_enable_preset_id').onchange=runtime.loadCharacterEnablePreset;
+runtime.loadCharacterEnablePreset(); runtime.refreshAutoCharacterControls();
+notice('已载入保存的角色列表及开关。');
+const history=[],config={civitaiModel:'urn:air:krea2:diffusionmodel:civitai:100@200',civitaiParams:{width:1024,height:1024,steps:8,cfgScale:1,sampler:'euler',scheduler:'simple'},dimensionSource:'json'};
+const adapter=createWaveSpeedAdapter({settings:()=>settings,context:()=>({chatId:'auto-character-fixture'}),expandCharacters:p=>expandCloudCharacters(p,runtime.processCharacterPrompt,window),replacePrompt:async p=>({modifiedPrompt:p,insertions:{}}),replaceCharacter:p=>p,composePrompt:async(a,b,c)=>[a,b,c].filter(Boolean).join(', '),saveSettings:noop,taskQueue:{addTask:()=>1,updateStatus:noop,completeTask:noop},record:noop,log:noop,eventTypes:{GENERATE_IMAGE_RESPONSE:'response'},events:{emit:(_event,result)=>notice(result.error),on:noop,removeListener:noop},api:async(route,body)=>{if(route==='/config')return config;if(route==='/jobs'&&!body)return history;if(route==='/jobs'){const job={...body,status:'failed',createdAt:Date.now(),error:'模拟生图失败，可长按复制',images:[]};history.unshift(job);el('count').textContent='生图提交次数：'+history.length;return job}throw Error('Unexpected route');}});
+el('prompt').onclick=()=>{
+ const original=[{role:'user',content:el('scene').value==='hero'?'示例男主坐在车里':'无人风景'}];
+ const outbound=withAutoCharacterPrompt(original,settings,'image_gen');
+ el('instruction').textContent=outbound.length>original.length?outbound.at(-1).content:'（关闭：未附加固定角色要求）';
+ el('request-status').textContent=outbound.length>original.length?'已自动附加 1 段固定角色要求。':'未附加固定角色要求。';
+ // Deterministic fake LLM response; real send/stream/Kunlun paths are tested in Node.
+ const hero=autoCharacterState(settings).characters.find(c=>c.name==='示例男主');
+ el('result').value=el('scene').value==='empty'?'An empty landscape at dusk.':`A car cabin. ${outbound.length>1&&hero?hero.token:'a young adult man'}, wearing a white shirt, seated.`;
+ el('generate').dataset.link=el('result').value;
+};
+const copy=Function(fn('copyText')+';return copyText')();
+const bind=Function('bindPromptCopyMenu','getWaveSpeedAdapter','copyText','toastr','triggerGeneration',fn('bindGenerationPromptMenu')+';return bindGenerationPromptMenu')(bindPromptCopyMenu,()=>adapter,async(doc,text)=>{el('copied').value=text;return copy(doc,text)},{success:notice,warning:notice},button=>adapter.generate({id:'fixture-'+Date.now(),prompt:button.dataset.link}));
+bind(el('generate'));
+</script></html>

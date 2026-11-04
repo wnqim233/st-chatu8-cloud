@@ -141,8 +141,8 @@ test('Kunlun image output still reaches the Civitai prompt pipeline with existin
 });
 
 test('the actual LLM service sends the Kunlun request and returns streamed/non-streamed image content through the existing event', async () => {
-  for (const stream of [false, true]) for (const guide of [false, true]) for (const toolMode of guide && stream ? ['renamed', 'matched'] : ['normal']) {
-    const { box } = fixture();
+  for (const auto of [false, true]) for (const stream of [false, true]) for (const guide of [false, true]) for (const toolMode of guide && stream ? ['renamed', 'matched'] : ['normal']) {
+    const { box } = fixture({ characterEnablePresetId: 'cast', characterEnablePresets: { cast: { autoPromptEnabled: auto, characters: ['hero'] } }, characterPresets: { hero: { nameCN: '示例男主' } } });
     const events = [], sent = [], states = [];
     let loading = 0;
     Object.assign(box, {
@@ -174,6 +174,7 @@ test('the actual LLM service sends the Kunlun request and returns streamed/non-s
     });
     vm.runInContext(fn('stripImagesFromMessages') + '\n' + fn('executeTypedLLMRequest'), box);
     const prompt = [{ role: 'user', content: guide ? '【ToolCall引导】工具说明\nRender {{getvar::appearance}}' : 'Render {{getvar::appearance}}' }];
+    const before = structuredClone(prompt);
     await box.executeTypedLLMRequest({ id: 'fixture-image-123', prompt }, 'image_gen', 'st_chatu8_cloud_fixture_response');
     assert.equal(sent.length, 1); assert.equal(events.length, 1); assert.equal(events[0][0], 'st_chatu8_cloud_fixture_response');
     assert.equal(events[0][1].success, true, JSON.stringify(events));
@@ -181,5 +182,9 @@ test('the actual LLM service sends the Kunlun request and returns streamed/non-s
     assert.deepEqual(states, [true]); assert.equal(loading, 0); assert.equal(box.activeRequests.size, 0);
     assert.equal(!!sent[0].tools, guide);
     assert.doesNotMatch(JSON.stringify(sent[0]), /\{\{getvar/);
+    assert.deepEqual(prompt, before, 'automatic instructions must not alter stored input');
+    const instructionCount = JSON.stringify(sent[0]).split('【固定角色外貌 · 自动要求】').length - 1;
+    assert.equal(instructionCount, auto ? 1 : 0, 'ordinary and Kunlun requests must retain exactly one enabled instruction');
+    if (auto) assert.match(guide ? sent[0].tools[0].function.description : JSON.stringify(sent[0].messages), /\$示例男主-sfw-upperbody\$/);
   }
 });

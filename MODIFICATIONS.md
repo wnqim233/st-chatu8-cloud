@@ -2,22 +2,23 @@
 
 本版本直接基于 [damoshen123/st-chatu8](https://github.com/damoshen123/st-chatu8) 的 `4e1e8f8a6cab1375d39eb806a292516dbb9c43be`，上游版本 3.1.0。
 
-修改者：Codex，受工作区所有者委托。首次修改：2026-09-19；最近修改：2026-11-04。原作者：从前跟你一样。沿用项目的 [Aladdin Free Public License](LICENSE)，原版权、声明、署名和许可证保留。分发或修改本版本须遵守该许可证；不提供额外保证。
+修改者：Codex，受工作区所有者委托。首次修改：2026-09-19；最近修改：2026-11-05。原作者：从前跟你一样。沿用项目的 [Aladdin Free Public License](LICENSE)，原版权、声明、署名和许可证保留。分发或修改本版本须遵守该许可证；不提供额外保证。
 
-本次修改目的：保留上游现有功能，作为独立前端扩展增加 WaveSpeed 和 Civitai 文生图支持；无需服务端插件。版本 3.1.0-cloud.19。
+本次修改目的：保留上游现有功能，作为独立前端扩展增加 WaveSpeed 和 Civitai 文生图支持；无需服务端插件。版本 3.1.0-cloud.20。
 
 | 上游文件 | 修改内容 |
 | --- | --- |
 | `index.js` | 导入共用生图适配器；为现有模式切换、设置加载和图片尺寸弹窗添加接入；新安装默认选 WaveSpeed；关闭本地适配版的上游覆盖更新入口；隔离 extensionName、数据库、图片目录与事件；资源路径按安装位置解析 |
 | `settings.html` | 增加 WaveSpeed / Civitai 共用侧栏入口，标明云端独立版 |
 | `html/settings/main.html` | 增加 WaveSpeed 与 Civitai 模式选项 |
+| `html/settings/character.html` | cloud.20 增加随当前角色列表保存的「启动固定角色」按钮 |
 | `style.css` | 引入新增页面样式 |
 | `manifest.json` | 标记独立版身份和版本，保留原作者，主页指向独立版仓库，上游来源记录在本文，关闭自动更新 |
 | `README.md` | 在保留上游原始说明的前提下，前置独立版的正确安装入口 |
 
 新增 `wavespeed/`、`shared/`、`html/settings/wavespeed.html` 为浏览器直连适配；新增测试、安装文档和打包脚本。共用上一版已测试的任务与 API 逻辑；`server/` 仅作为历史兼容及测试代码保留在源码包，不是安装依赖。没有重写 LLM 或世界书系统。
 
-上游 92 个文件的 SHA-256 记录在 `docs/upstream-sha256.json`；其中 86 个文件保持逐字节一致。cloud.12 之前重点保护的 7 个模块中，世界书条目选择、世界书处理、LLM 服务、LLM 请求与任务队列 5 个模块仍逐字节一致；提示词编排与图片插入按下文有选择地移植修复。聊天上下文模块仅把聊天元数据存储键从 `st-chatu8` 换为 `st-chatu8-cloud`，校验时只还原该存储键再与上游比对。原指纹记录在 `docs/reused-modules-sha256.json`，本次 10 个模块的移植前后指纹记录在 `docs/backported-modules-sha256.json`，检查脚本同时验证两组记录。
+上游 92 个文件的 SHA-256 记录在 `docs/upstream-sha256.json`；其中 85 个文件保持逐字节一致。cloud.12 之前重点保护的 7 个模块中，世界书条目选择、世界书处理、LLM 服务、LLM 请求与任务队列 5 个模块在该版本中逐字节一致；提示词编排与图片插入按下文有选择地移植修复。聊天上下文模块仅把聊天元数据存储键从 `st-chatu8` 换为 `st-chatu8-cloud`，校验时只还原该存储键再与上游比对。原指纹记录在 `docs/reused-modules-sha256.json`，本次 10 个模块的移植前后指纹记录在 `docs/backported-modules-sha256.json`，检查脚本同时验证两组记录。
 
 直接复用的链路：
 
@@ -30,6 +31,14 @@
 初期独立原型已经退出交付版本，仅在工作目录 `backups/` 保存备份，不参与加载或安装包。最终安装包是本上游适配版本。
 
 Civitai 使用官方 v2 Orchestration 文生图接口，支持 Checkpoint AIR、LoRA、免费预估和预估 Buzz 上限。它复用 `shared/` 中的任务状态、查询和恢复逻辑，浏览器下载后调用原缓存接口。Key 放在当前浏览器独立 IndexedDB 中，不加入原配置导出。
+
+### cloud.20 一键启动固定角色（2026-11-05）
+
+在角色启用页和云端生图页加入同一个状态按钮。启用时先保存角色列表，随后设置当前列表的 `autoPromptEnabled`；未设置的旧列表默认关闭，状态跟随原列表保存、导入和角色卡绑定。名单为空时给出具体操作提示，保存异常会回退状态。
+
+新增 `wavespeed/auto-characters.js`，从当前启用列表读取角色姓名、别名和有效引用标记。在实际 `executeTypedLLMRequest` 的绘图、立绘及 tag 修改请求发送前，向出站消息副本添加条件式外貌要求；不修改原上下文预设或聊天历史，不硬插人物，不改写旧提示词。要求随昆仑转换进入工具描述，普通模式留在消息中；失败重试不会堆叠，关闭后下一次请求停止注入。原角色解析、Civitai、Krea Simple、支付、队列与长按菜单文件均保持 cloud.19 内容。
+
+新增审计层 `docs/auto-character-sha256.json` 记录 5 个文件及 3 个内嵌模块的前后指纹；之前的历史审计不改写。另增加实际出站请求、角色名单切换、开关持久化、失败恢复、别名、无人画面和浏览器交互验证。测试及边界见 [验证记录](docs/VALIDATION.md)。
 
 ### cloud.19 云端角色预设接入（2026-11-04）
 

@@ -50,3 +50,9 @@
 .chatu8-cloud-image-drafts summary { cursor: pointer; }
 .chatu8-cloud-image-drafts textarea { display: block; width: 100%; box-sizing: border-box; margin: .4em 0; }
 .chatu8-cloud-image-drafts button { margin-inline-end: .6em; }
+/* Fixed-character switch is shared by the cloud and character settings pages. */
+.ws-auto-characters { padding: 14px; margin: 12px 0; border: 1px solid var(--SmartThemeBorderColor, #596778); border-radius: 10px; }
+.ws-auto-characters button { width: 100%; min-height: 44px; white-space: normal; margin: 0; }
+.ws-auto-characters button[aria-pressed="true"] { background: #245b46; color: #fff; border-color: #5aa981; }
+.ws-auto-characters p { margin: 10px 0 6px; line-height: 1.5; overflow-wrap: anywhere; }
+.ws-auto-characters small { display: block; opacity: .8; line-height: 1.5; }
