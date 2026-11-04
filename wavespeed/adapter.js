@@ -9,6 +9,7 @@ import { createSettingsEditor, parameterSummary, loraSummary } from './settings.
 import { workflowBody } from '../shared/civitai.js';
 import { portableConfig, civitaiPaymentLabel } from '../shared/config.js';
 import { validatePrivateBackup } from './migration.js';
+import { cleanKrea2Prompt, parseKrea2Roles } from '../shared/krea-prompt.js';
 
 export function createWaveSpeedAdapter(deps) {
   const api = deps.api || createBrowserApi(deps);
@@ -61,15 +62,18 @@ export function createWaveSpeedAdapter(deps) {
     let main = original;
     let other = '';
     let roles;
-    if (original?.includes('Scene Composition')) {
-      roles = deps.parseRoles(original);
-      main = roles['Scene Composition'] || original;
+    const krea2 = config.imageModel?.startsWith('urn:air:krea2:');
+    if (krea2) roles = parseKrea2Roles(original);
+    else if (original?.includes('Scene Composition')) roles = deps.parseRoles(original);
+    if (roles) {
+      main = krea2 ? roles['Scene Composition'] : roles['Scene Composition'] || original;
       other = [1, 2, 3, 4].map(i => roles[`Character ${i} Prompt`] || '').join(', ');
     }
     const { modifiedPrompt, insertions } = await deps.replacePrompt(main, other);
     let replaced = modifiedPrompt;
-    if (roles) for (let i = 1; i <= 4; i++) if (roles[`Character ${i} Prompt`]) replaced += ` | ${deps.replaceCharacter(roles[`Character ${i} Prompt`], `${main} ${other}`)}`;
-    const prompt = await deps.composePrompt(config.fixedPrompt, replaced, config.fixedPromptEnd, '', insertions);
+    if (roles) for (let i = 1; i <= 4; i++) if (roles[`Character ${i} Prompt`]) replaced += `${krea2 ? '\n\n' : ' | '}${deps.replaceCharacter(roles[`Character ${i} Prompt`], `${main} ${other}`)}`;
+    const composed = await deps.composePrompt(config.fixedPrompt, replaced, config.fixedPromptEnd, '', insertions);
+    const prompt = krea2 ? cleanKrea2Prompt(composed) : composed;
     const negative = [config.negativePrompt, request.negative_prompt].filter(Boolean).join(', ');
     return { prompt, params: mapParameters(config, request, negative) };
   }

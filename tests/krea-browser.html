@@ -1,0 +1,46 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Krea 参数升级与提示词回归</title><link rel="stylesheet" href="/wavespeed/style.css">
+<style>body{margin:22px auto;max-width:900px;padding:0 18px;background:#17212c;color:#eef0f7;font:16px/1.6 system-ui}button{padding:12px 18px;background:#576bb2;color:white;border:0;border-radius:8px;font:inherit}section{padding:16px;border:1px solid #67778c;border-radius:10px;margin:14px 0}textarea{width:100%;box-sizing:border-box;font-size:16px}#status,#result{color:#b0e0c1}.st-chatu8-settings-section{margin:16px 0}pre{white-space:pre-wrap}</style>
+<h1>Krea 参数与提示词修复</h1><p>独立本地测试 · 使用真实浏览器存储，平台请求全部模拟。</p>
+<p id="result">正在读取旧配置…</p><p id="count">生成提交次数：0</p><p id="status" role="status"></p>
+<section><p>车内场景：两名成年人坐在前排。</p><button id="generate">生成图片</button></section>
+<label><input type="checkbox" id="restricted">模拟自动复制受限</label>
+<label>本次复制内容<textarea id="copied" aria-label="本次复制内容" rows="4" readonly></textarea></label>
+<div id="st-chatu8-settings"></div>
+<script type="module">
+import {createBrowserApi,BrowserStore} from '../wavespeed/browser.js';
+import {createWaveSpeedAdapter} from '../wavespeed/adapter.js';
+import {bindPromptCopyMenu} from '../wavespeed/prompt-menu.js';
+import {DEFAULT_CONFIG} from '../shared/config.js';
+const el=id=>document.getElementById(id),noop=()=>{},check=(ok,message)=>{if(!ok)throw Error(message)};
+const scope='cloud18-krea-browser',store=new BrowserStore(scope),settings={mode:'civitai',cloudStorageId:scope};
+const existed=await store.read('config');
+if(!existed)await store.saveConfig({...DEFAULT_CONFIG,civitaiKey:'fixture-key',civitaiModel:'urn:air:krea2:diffusionmodel:civitai:100@200+300',civitaiParams:{width:1024,height:1024,steps:8,cfgScale:1,sampler:'euler',scheduler:'beta',quantity:1}});
+let count=0;
+const api=createBrowserApi({settings:()=>settings,saveSettings:noop},{fetcher:async(url,options)=>{
+  check(url.startsWith('https://orchestration.civitai.com/'),'不应调用其他平台');
+  const body=JSON.parse(options.body),input=body.steps[0].input;
+  check(input.scheduler==='simple'&&input.steps===8&&input.cfgScale===1,'请求参数不正确');
+  check(!/centers:|768x512|\|/.test(input.prompt),'提示词仍有格式残留');
+  check(input.prompt.includes('woman driver')&&input.prompt.includes('adult passenger'),'人物描述丢失');
+  check(body.tips.creators===0&&body.tips.civitai===0&&body.upgradeMode==='manual','费用控制改变');
+  if(url.includes('whatif'))return new Response(JSON.stringify({cost:{total:1,tips:{creators:0,civitai:0}}}));
+  el('count').textContent='生成提交次数：'+(++count);
+  return new Response(JSON.stringify({id:'fixture-workflow-'+Date.now(),status:'failed',error:'模拟生成失败：可继续长按复制提示词',steps:[]}));
+}});
+const config=await api('/config');
+check(config.civitaiParams.scheduler==='simple','旧配置升级失败');
+el('result').textContent=existed?'刷新恢复通过：Euler / Simple，8 步，CFG 1。':'旧配置升级通过：Euler / Beta → Euler / Simple，8 步，CFG 1。';
+el('st-chatu8-settings').innerHTML=await(await fetch('/html/settings/wavespeed.html')).text();
+const notice=text=>el('status').textContent=text;
+const adapter=createWaveSpeedAdapter({api,settings:()=>settings,context:()=>({chatId:'fixture-krea'}),enabled:()=>false,saveSettings:noop,
+  replacePrompt:async text=>({modifiedPrompt:text,insertions:{}}),replaceCharacter:text=>text,composePrompt:async(a,b,c)=>[a,b,c].filter(Boolean).join(', '),
+  taskQueue:{addTask:()=>1,updateStatus:noop,completeTask:noop},record:noop,log:noop,
+  eventTypes:{GENERATE_IMAGE_RESPONSE:'result'},events:{emit:(_event,result)=>notice(result.error),on:noop,removeListener:noop},initializeImages:noop});
+adapter.mount();
+const source=await(await fetch('/index.js')).text(),fn=name=>{const match=new RegExp('(?:async )?function '+name+'\\(').exec(source);return source.slice(match.index,source.indexOf('\n}',match.index)+2)};
+const realCopy=Function(fn('copyText')+';return copyText')();
+const copy=async(doc,text)=>{el('copied').value=text;return el('restricted').checked?false:realCopy(doc,text)};
+const bind=Function('bindPromptCopyMenu','getWaveSpeedAdapter','copyText','toastr','triggerGeneration',fn('bindGenerationPromptMenu')+';return bindGenerationPromptMenu')(bindPromptCopyMenu,()=>adapter,copy,{success:notice,warning:notice},button=>adapter.generate({id:'fixture-'+Date.now(),prompt:button.dataset.link}));
+const button=el('generate');button.dataset.link='A car cabin at dusk, 768x512 | a woman driver with glasses.|centers: | an adult passenger in a white shirt.|centers:';bind(button);
+</script></html>

@@ -1,0 +1,36 @@
+{
+  "baseVersion": "3.1.0-cloud.17",
+  "version": "3.1.0-cloud.18",
+  "files": {
+    "shared/config.js": {
+      "beforeSha256": "67dbf8e7b1ea0d80e51dcf631b0ebefb0d4405be1828f0a1a3ad4c6a0764b139",
+      "sha256": "43425bb794b6f758895aad1ee0e0b8f54919f345707ff6b302d9665e831982cd",
+      "purpose": "Migrate the old Krea 2 Turbo recipe exactly once; keep custom configurations and credentials."
+    },
+    "shared/civitai.js": {
+      "beforeSha256": "c9e87637cf9ed0612c2fef39b7bcf06018f5b77e780521c06b18f59d0b3b04d6",
+      "sha256": "ffb86a1a067c05d28d985a28b0d18612902c5f80c33240e4800e926899ba600b",
+      "purpose": "Use the official Simple scheduler default; preserve explicit job parameters and payments."
+    },
+    "wavespeed/adapter.js": {
+      "beforeSha256": "3385bf4168fab9ee7d19dfbfcfdb1baa1089bc6a8544a91863e7630dce6eb947",
+      "sha256": "c8ca93a27fabea1d9ee2d87c0a86fe60a15d06b6ed3534259ab8fddb84f1e0f5",
+      "purpose": "Clean Krea-only metadata and preserve multiline role descriptions through generation and prompt copying."
+    },
+    "wavespeed/browser.js": {
+      "beforeSha256": "2add8e516c869604f0b1eba89b8d99a7635b38f66e35571919271b35ccf20e98",
+      "sha256": "b4ab3fc9ec9a588b5a118d86fa03418b846bbc1cecf87e9e0c06beea96e4bed5",
+      "purpose": "Persist migration before new work with the existing configuration lock and retry failures."
+    },
+    "wavespeed/settings.js": {
+      "beforeSha256": "6f732008409e970fc64962941db9e09b5cebad1870064c0447eadc68c87c2db3",
+      "sha256": "a6e3a3bc2cfe1026cb823198fcc38c3b8ac51c4c7c8b32a7ef75ec9276befba0",
+      "purpose": "Display saved sampler and scheduler in the configuration summary."
+    },
+    "shared/krea-prompt.js": {
+      "beforeSha256": null,
+      "sha256": "183865709bc33b76d6eb3d0c303a412046587dc919ee9f4259931458f9bce111",
+      "purpose": "New Krea-only prompt cleaner and multiline role parser."
+    }
+  }
+}

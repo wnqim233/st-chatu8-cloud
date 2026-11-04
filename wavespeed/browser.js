@@ -1,7 +1,7 @@
 /* Browser-only transport for the upstream-derived extension. Aladdin Free Public License.
  * Reuses the shared, tested provider/job engine; no SillyTavern server plugin required.
  */
-import { DEFAULT_CONFIG, AppError, publicConfig, updateConfig, safeError } from '../shared/config.js';
+import { DEFAULT_CONFIG, AppError, publicConfig, updateConfig, safeError, migrateKrea2Defaults } from '../shared/config.js';
 import { WaveSpeedService, publicJob } from '../shared/jobs.js';
 import { createJobQueue } from '../shared/queue.js';
 import { withCivitai } from '../shared/civitai.js';
@@ -118,6 +118,12 @@ export function createBrowserApi(deps, { fetcher = globalThis.fetch, storeFactor
   return async (route, body) => {
     const user = session(); const { store } = user; let config;
     try {
+      if (!user.ready) user.ready = store.exclusive('config', async () => {
+        const previous = await store.config();
+        const next = migrateKrea2Defaults(previous);
+        if (next !== previous) await store.saveConfig(next);
+      }).catch(error => { user.ready = undefined; throw error; });
+      await user.ready;
       config = await store.config();
       if (route === '/config') {
         if (body === undefined) return publicConfig(config);

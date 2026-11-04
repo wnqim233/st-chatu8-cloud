@@ -70,8 +70,24 @@ export function updateConfig(old, input) {
 }
 
 export function publicConfig(config) {
-  const { wavespeedKey, civitaiKey, ...rest } = config;
+  const { wavespeedKey, civitaiKey, krea2DefaultsVersion, ...rest } = config;
   return { ...rest, hasWavespeedKey: Boolean(wavespeedKey), hasCivitaiKey: Boolean(civitaiKey) };
+}
+
+// One upgrade of the old documented Turbo recipe, before the browser accepts
+// new jobs. Later explicit scheduler choices must remain the user's choice.
+export function migrateKrea2Defaults(config, now = Date.now) {
+  if (config.krea2DefaultsVersion >= 1) return config;
+  const next = { ...config, krea2DefaultsVersion: 1 };
+  const p = config.civitaiParams;
+  if (config.civitaiModel?.startsWith('urn:air:krea2:') && plainObject(p) &&
+      (p.variant ?? 'turbo') === 'turbo' && (p.steps ?? 8) === 8 &&
+      (p.cfgScale ?? 1) === 1 && (p.sampler ?? 'euler') === 'euler' && p.scheduler === 'beta') {
+    next.civitaiParams = { ...p, scheduler: 'simple' };
+    next.revision = (Number.isSafeInteger(config.revision) ? config.revision : 0) + 1;
+    next.savedAt = now();
+  }
+  return next;
 }
 
 export function safeError(error, config = {}) {

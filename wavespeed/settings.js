@@ -13,7 +13,8 @@ const paramsId = provider => provider === 'civitai' ? 'civitai-params' : 'params
 export function parameterSummary(params) {
   const size = params.width && params.height ? `${params.width} × ${params.height}` : params.size || '模型默认尺寸';
   const loras = params.loras || params.additionalNetworks || {};
-  return `${size} · ${params.steps ?? '默认'} 步 · CFG ${params.cfgScale ?? '默认'} · LoRA ${Object.keys(loras).length} 个`;
+  const sampling = [params.sampler, params.scheduler].filter(Boolean).join(' / ');
+  return `${size} · ${params.steps ?? '默认'} 步 · CFG ${params.cfgScale ?? '默认'}${sampling ? ' · ' + sampling : ''} · LoRA ${Object.keys(loras).length} 个`;
 }
 export function loraSummary(params) {
   const entries = Object.entries(params.loras || params.additionalNetworks || {});

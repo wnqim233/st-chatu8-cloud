@@ -21,7 +21,7 @@ export function workflowBody(job, estimate = false) {
   if (krea2) {
     const { variant = 'turbo', ...params } = job.params;
     input = { width: 1024, height: 1024, steps: variant === 'raw' ? 20 : 8,
-      cfgScale: variant === 'raw' ? 4 : 1, quantity: 1, sampler: 'euler', scheduler: 'beta',
+      cfgScale: variant === 'raw' ? 4 : 1, quantity: 1, sampler: 'euler', scheduler: 'simple',
       ...params, engine: 'comfy', ecosystem: 'krea2', model: variant, operation: 'createImage',
       diffusionModel: job.model, seed: job.params.seed ?? job.seed, prompt: job.prompt };
   } else {
